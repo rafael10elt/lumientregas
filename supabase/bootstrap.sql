@@ -83,6 +83,65 @@ begin
 end;
 $$;
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.users u
+    where u."authUserId" = auth.uid()
+      and u.role = 'admin'
+  );
+$$;
+
+create or replace function public.handle_new_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  profile_name text;
+begin
+  profile_name :=
+    coalesce(
+      new.raw_user_meta_data ->> 'full_name',
+      new.raw_user_meta_data ->> 'name',
+      new.email
+    );
+
+  insert into public.users (
+    "openId",
+    "authUserId",
+    name,
+    email,
+    "loginMethod",
+    role
+  )
+  values (
+    new.id::text,
+    new.id,
+    profile_name,
+    new.email,
+    'supabase',
+    'user'
+  )
+  on conflict ("authUserId")
+  do update set
+    "openId" = excluded."openId",
+    name = coalesce(excluded.name, public.users.name),
+    email = coalesce(excluded.email, public.users.email),
+    "loginMethod" = coalesce(public.users."loginMethod", excluded."loginMethod"),
+    "updatedAt" = now();
+
+  return new;
+end;
+$$;
+
 drop trigger if exists trg_users_updated_at on public.users;
 create trigger trg_users_updated_at
 before update on public.users
@@ -98,12 +157,75 @@ create trigger trg_deliveries_updated_at
 before update on public.deliveries
 for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_auth_user_created on auth.users;
+create trigger trg_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_auth_user();
+
 alter table public.users enable row level security;
 alter table public.drivers enable row level security;
 alter table public.deliveries enable row level security;
 
--- No public policies yet.
--- The app currently uses the backend with the service_role key,
--- which bypasses RLS securely on the server side.
--- When you add Supabase Auth in the next phase, we can add RLS policies
--- for authenticated users and, if needed, switch frontend reads to anon key.
+drop policy if exists "users_select_own_or_admin" on public.users;
+create policy "users_select_own_or_admin"
+on public.users
+for select
+to authenticated
+using (
+  "authUserId" = auth.uid()
+  or public.is_admin()
+);
+
+drop policy if exists "users_insert_own_or_admin" on public.users;
+create policy "users_insert_own_or_admin"
+on public.users
+for insert
+to authenticated
+with check (
+  "authUserId" = auth.uid()
+  or public.is_admin()
+);
+
+drop policy if exists "users_update_own_or_admin" on public.users;
+create policy "users_update_own_or_admin"
+on public.users
+for update
+to authenticated
+using (
+  "authUserId" = auth.uid()
+  or public.is_admin()
+)
+with check (
+  "authUserId" = auth.uid()
+  or public.is_admin()
+);
+
+drop policy if exists "drivers_select_authenticated" on public.drivers;
+create policy "drivers_select_authenticated"
+on public.drivers
+for select
+to authenticated
+using (true);
+
+drop policy if exists "drivers_admin_write" on public.drivers;
+create policy "drivers_admin_write"
+on public.drivers
+for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "deliveries_select_authenticated" on public.deliveries;
+create policy "deliveries_select_authenticated"
+on public.deliveries
+for select
+to authenticated
+using (true);
+
+drop policy if exists "deliveries_admin_write" on public.deliveries;
+create policy "deliveries_admin_write"
+on public.deliveries
+for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
