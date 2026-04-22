@@ -207,13 +207,13 @@ for select
 to authenticated
 using (true);
 
-drop policy if exists "drivers_admin_write" on public.drivers;
-create policy "drivers_admin_write"
+drop policy if exists "drivers_write_authenticated" on public.drivers;
+create policy "drivers_write_authenticated"
 on public.drivers
 for all
 to authenticated
-using (public.is_admin())
-with check (public.is_admin());
+using (true)
+with check (true);
 
 drop policy if exists "deliveries_select_authenticated" on public.deliveries;
 create policy "deliveries_select_authenticated"
@@ -222,10 +222,10 @@ for select
 to authenticated
 using (true);
 
-drop policy if exists "deliveries_admin_write" on public.deliveries;
-create policy "deliveries_admin_write"
+drop policy if exists "deliveries_write_authenticated" on public.deliveries;
+create policy "deliveries_write_authenticated"
 on public.deliveries
 for all
 to authenticated
-using (public.is_admin())
-with check (public.is_admin());
+using (true)
+with check (true);

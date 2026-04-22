@@ -1,22 +1,13 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type {
-  Delivery,
-  Driver,
-  InsertDelivery,
-  InsertDriver,
-  InsertUser,
-  User,
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  type Delivery,
+  type Driver,
+  type InsertDelivery,
+  type InsertDriver,
+  type InsertUser,
+  type User,
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
-
-let _db: SupabaseClient | null = null;
-
-function getSupabaseConfig() {
-  return {
-    url: ENV.supabaseUrl,
-    serviceRoleKey: ENV.supabaseServiceRoleKey,
-  };
-}
+import { createSupabaseAdminClient, createSupabaseAnonClient } from "./_core/supabase";
 
 function toIsoString(value: Date | string | null | undefined) {
   if (value == null) return undefined;
@@ -34,7 +25,7 @@ function removeUndefined<T extends Record<string, unknown>>(value: T): Partial<T
   ) as Partial<T>;
 }
 
-function normalizeUser(row: Record<string, any>): User {
+function mapUser(row: Record<string, any>): User {
   return {
     id: Number(row.id),
     openId: String(row.openId),
@@ -49,7 +40,7 @@ function normalizeUser(row: Record<string, any>): User {
   };
 }
 
-function normalizeDriver(row: Record<string, any>): Driver {
+function mapDriver(row: Record<string, any>): Driver {
   return {
     id: Number(row.id),
     name: String(row.name),
@@ -62,7 +53,7 @@ function normalizeDriver(row: Record<string, any>): Driver {
   };
 }
 
-function normalizeDelivery(row: Record<string, any>): Delivery {
+function mapDelivery(row: Record<string, any>): Delivery {
   return {
     id: Number(row.id),
     clientName: String(row.clientName),
@@ -84,89 +75,54 @@ function normalizeDelivery(row: Record<string, any>): Delivery {
   };
 }
 
-// Lazily create the Supabase admin client so local tooling can run without a DB.
-export async function getDb() {
-  if (_db) {
-    return _db;
-  }
-
-  const { url, serviceRoleKey } = getSupabaseConfig();
-  if (!url || !serviceRoleKey) {
-    return null;
-  }
-
-  _db = createClient(url, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-
-  return _db;
+function clientFor(accessToken?: string | null): SupabaseClient {
+  return accessToken ? createSupabaseAnonClient(accessToken) : createSupabaseAdminClient();
 }
 
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
+export async function getUserByAuthUserId(authUserId: string) {
+  const db = createSupabaseAdminClient();
+
+  const { data, error } = await db
+    .from("users")
+    .select("*")
+    .eq("authUserId", authUserId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
   }
 
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
+  return data ? mapUser(data) : undefined;
+}
+
+export async function ensureUserProfile(input: InsertUser): Promise<void> {
+  if (!input.authUserId) {
+    throw new Error("authUserId is required");
   }
 
-  try {
-    const values: Record<string, unknown> = {
-      openId: user.openId,
-      updatedAt: new Date().toISOString(),
-    };
+  const db = createSupabaseAdminClient();
+  const values = removeUndefined({
+    openId: input.openId,
+    authUserId: input.authUserId,
+    name: input.name ?? null,
+    email: input.email ?? null,
+    loginMethod: input.loginMethod ?? "supabase",
+    role: input.role ?? "user",
+    lastSignedIn: toIsoString(input.lastSignedIn) ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
 
-    const textFields = ["authUserId", "name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
+  const { error } = await db.from("users").upsert(values, {
+    onConflict: "authUserId",
+  });
 
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      values[field] = value ?? null;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = toIsoString(user.lastSignedIn);
-    }
-
-    if (user.role !== undefined) {
-      values.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = "admin";
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date().toISOString();
-    }
-
-    const { error } = await db.from("users").upsert(values, {
-      onConflict: "openId",
-    });
-
-    if (error) {
-      throw error;
-    }
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
+  if (error) {
     throw error;
   }
 }
 
 export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
+  const db = createSupabaseAdminClient();
   const { data, error } = await db
     .from("users")
     .select("*")
@@ -177,62 +133,41 @@ export async function getUserByOpenId(openId: string) {
     throw error;
   }
 
-  return data ? normalizeUser(data) : undefined;
+  return data ? mapUser(data) : undefined;
 }
 
-export async function getDeliveries(filters?: {
-  status?: string;
-  driverId?: number;
-  startDate?: Date;
-  endDate?: Date;
-}) {
-  const db = await getDb();
-  if (!db) return [];
-
+export async function getDeliveries(
+  filters?: {
+    status?: string;
+    driverId?: number;
+    startDate?: Date;
+    endDate?: Date;
+  },
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
   let query = db.from("deliveries").select("*");
 
-  if (filters?.status) {
-    query = query.eq("status", filters.status);
-  }
-  if (filters?.driverId !== undefined) {
-    query = query.eq("driverId", filters.driverId);
-  }
-  if (filters?.startDate) {
-    query = query.gte("scheduledAt", filters.startDate.toISOString());
-  }
-  if (filters?.endDate) {
-    query = query.lte("scheduledAt", filters.endDate.toISOString());
-  }
+  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.driverId !== undefined) query = query.eq("driverId", filters.driverId);
+  if (filters?.startDate) query = query.gte("scheduledAt", filters.startDate.toISOString());
+  if (filters?.endDate) query = query.lte("scheduledAt", filters.endDate.toISOString());
 
   const { data, error } = await query.order("createdAt", { ascending: false });
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
-  return (data ?? []).map(normalizeDelivery);
+  return (data ?? []).map(mapDelivery);
 }
 
-export async function getDeliveryById(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-
-  const { data, error } = await db
-    .from("deliveries")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data ? normalizeDelivery(data) : undefined;
+export async function getDeliveryById(id: number, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { data, error } = await db.from("deliveries").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? mapDelivery(data) : undefined;
 }
 
-export async function createDelivery(delivery: InsertDelivery) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
+export async function createDelivery(delivery: InsertDelivery, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { data, error } = await db
     .from("deliveries")
     .insert(
@@ -246,17 +181,16 @@ export async function createDelivery(delivery: InsertDelivery) {
     .select("*")
     .single();
 
-  if (error) {
-    throw error;
-  }
-
-  return data ? normalizeDelivery(data) : null;
+  if (error) throw error;
+  return data ? mapDelivery(data) : null;
 }
 
-export async function updateDelivery(id: number, updates: Partial<InsertDelivery>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
+export async function updateDelivery(
+  id: number,
+  updates: Partial<InsertDelivery>,
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
   const { error } = await db
     .from("deliveries")
     .update(
@@ -268,44 +202,25 @@ export async function updateDelivery(id: number, updates: Partial<InsertDelivery
     )
     .eq("id", id);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 }
 
-export async function getDrivers() {
-  const db = await getDb();
-  if (!db) return [];
-
+export async function getDrivers(accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { data, error } = await db.from("drivers").select("*").order("name", { ascending: true });
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []).map(normalizeDriver);
+  if (error) throw error;
+  return (data ?? []).map(mapDriver);
 }
 
-export async function getDriverById(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-
-  const { data, error } = await db
-    .from("drivers")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data ? normalizeDriver(data) : undefined;
+export async function getDriverById(id: number, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { data, error } = await db.from("drivers").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? mapDriver(data) : undefined;
 }
 
-export async function createDriver(driver: InsertDriver) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
+export async function createDriver(driver: InsertDriver, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { data, error } = await db
     .from("drivers")
     .insert(
@@ -318,17 +233,16 @@ export async function createDriver(driver: InsertDriver) {
     .select("*")
     .single();
 
-  if (error) {
-    throw error;
-  }
-
-  return data ? normalizeDriver(data) : null;
+  if (error) throw error;
+  return data ? mapDriver(data) : null;
 }
 
-export async function updateDriver(id: number, updates: Partial<InsertDriver>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
+export async function updateDriver(
+  id: number,
+  updates: Partial<InsertDriver>,
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
   const { error } = await db
     .from("drivers")
     .update(
@@ -339,7 +253,5 @@ export async function updateDriver(id: number, updates: Partial<InsertDriver>) {
     )
     .eq("id", id);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 }

@@ -1,11 +1,54 @@
 import { Button } from "@/components/ui/button";
-import { getLoginUrl } from "@/const";
-import { Package2, ShieldAlert } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { supabase } from "@/lib/supabase";
+import { Package2, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 export default function Login() {
-  const hasExternalLogin = Boolean(
-    import.meta.env.VITE_OAUTH_PORTAL_URL && import.meta.env.VITE_APP_ID
-  );
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submitSignIn = async () => {
+    if (!email || !password) {
+      toast.error("Informe e-mail e senha");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Login realizado com sucesso");
+    window.location.href = "/";
+  };
+
+  const submitSignUp = async () => {
+    if (!email || !password) {
+      toast.error("Informe e-mail e senha");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    setLoading(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Conta criada. Se o projeto exigir confirmação por e-mail, conclua a validação antes de entrar.");
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 to-accent/10 p-4">
@@ -25,31 +68,43 @@ export default function Login() {
             Sistema de Gestão de Entregas e Roteirização Inteligente
           </p>
 
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Faça login para acessar o painel de controle
-            </p>
+          <div className="space-y-4 text-left">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">E-mail</label>
+              <Input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="voce@exemplo.com"
+              />
+            </div>
 
-            <Button
-              onClick={() => {
-                window.location.href = getLoginUrl();
-              }}
-              size="lg"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-              disabled={!hasExternalLogin}
-            >
-              {hasExternalLogin ? "Fazer Login" : "Login indisponível"}
-            </Button>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Senha</label>
+              <Input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
 
-            {!hasExternalLogin ? (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-900">
-                <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                <p>
-                  Configure `VITE_OAUTH_PORTAL_URL` e `VITE_APP_ID` no Netlify
-                  para habilitar o login externo.
-                </p>
-              </div>
-            ) : null}
+            <div className="grid grid-cols-1 gap-2">
+              <Button onClick={submitSignIn} disabled={loading}>
+                Entrar
+              </Button>
+              <Button onClick={submitSignUp} variant="outline" disabled={loading}>
+                Criar usuário de teste
+              </Button>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-left text-xs text-blue-900">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                Use o `anon key` no frontend e `service_role` apenas no backend.
+                Depois de criar o usuário, o acesso ao sistema passa a usar RLS.
+              </p>
+            </div>
           </div>
 
           <div className="mt-8 pt-8 border-t border-border">
