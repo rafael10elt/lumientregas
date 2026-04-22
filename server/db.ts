@@ -2,8 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   type Delivery,
   type Driver,
+  type DriverVehicle,
   type InsertDelivery,
   type InsertDriver,
+  type InsertDriverVehicle,
   type InsertUser,
   type User,
 } from "../drizzle/schema";
@@ -53,6 +55,19 @@ function mapDriver(row: Record<string, any>): Driver {
   };
 }
 
+function mapDriverVehicle(row: Record<string, any>): DriverVehicle {
+  return {
+    id: Number(row.id),
+    driverId: Number(row.driverId),
+    model: String(row.model),
+    plate: String(row.plate),
+    nickname: row.nickname ?? null,
+    isPrimary: Boolean(row.isPrimary),
+    createdAt: toDate(row.createdAt)!,
+    updatedAt: toDate(row.updatedAt)!,
+  };
+}
+
 function mapDelivery(row: Record<string, any>): Delivery {
   return {
     id: Number(row.id),
@@ -68,6 +83,7 @@ function mapDelivery(row: Record<string, any>): Delivery {
     driverId: row.driverId == null ? null : Number(row.driverId),
     createdByUserId: row.createdByUserId == null ? null : Number(row.createdByUserId),
     status: row.status,
+    routeOrder: row.routeOrder == null ? null : Number(row.routeOrder),
     scheduledAt: toDate(row.scheduledAt),
     notes: row.notes ?? null,
     distance: row.distance ?? null,
@@ -282,6 +298,7 @@ export async function createDelivery(delivery: InsertDelivery, accessToken?: str
         createdAt: toIsoString(delivery.createdAt),
         updatedAt: toIsoString(delivery.updatedAt),
         destinationPostalCode: delivery.destinationPostalCode ?? null,
+        routeOrder: delivery.routeOrder ?? null,
       })
     )
     .select("*")
@@ -297,11 +314,14 @@ export async function updateDelivery(
   accessToken?: string | null
 ) {
   const db = clientFor(accessToken);
+  const normalizedRouteOrder =
+    updates.routeOrder === undefined ? undefined : updates.routeOrder;
   const { error } = await db
     .from("deliveries")
     .update(
       removeUndefined({
         ...updates,
+        routeOrder: normalizedRouteOrder,
         scheduledAt: toIsoString(updates.scheduledAt),
         updatedAt: new Date().toISOString(),
       })
@@ -315,6 +335,28 @@ export async function deleteDelivery(id: number, accessToken?: string | null) {
   const db = clientFor(accessToken);
   const { error } = await db.from("deliveries").delete().eq("id", id);
   if (error) throw error;
+}
+
+export async function updateDeliveriesOrder(
+  updates: Array<{ id: number; routeOrder: number; driverId?: number | null; scheduledAt?: Date | string | null }>,
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
+  for (const item of updates) {
+    const { error } = await db
+      .from("deliveries")
+      .update({
+        routeOrder: item.routeOrder,
+        ...(item.driverId !== undefined ? { driverId: item.driverId } : {}),
+        ...(item.scheduledAt !== undefined ? { scheduledAt: toIsoString(item.scheduledAt) } : {}),
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", item.id);
+
+    if (error) {
+      throw error;
+    }
+  }
 }
 
 export async function getDrivers(accessToken?: string | null) {
@@ -371,5 +413,58 @@ export async function updateDriver(
 export async function deleteDriver(id: number, accessToken?: string | null) {
   const db = clientFor(accessToken);
   const { error } = await db.from("drivers").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function getDriverVehicles(driverId?: number) {
+  const db = createSupabaseAdminClient();
+  let query = db.from("driver_vehicles").select("*");
+  if (driverId !== undefined) {
+    query = query.eq("driverId", driverId);
+  }
+  const { data, error } = await query.order("isPrimary", { ascending: false }).order("createdAt", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(mapDriverVehicle);
+}
+
+export async function createDriverVehicle(vehicle: InsertDriverVehicle, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { data, error } = await db
+    .from("driver_vehicles")
+    .insert(
+      removeUndefined({
+        ...vehicle,
+        isPrimary: vehicle.isPrimary ?? false,
+        createdAt: toIsoString(vehicle.createdAt),
+        updatedAt: toIsoString(vehicle.updatedAt),
+      })
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data ? mapDriverVehicle(data) : null;
+}
+
+export async function updateDriverVehicle(
+  id: number,
+  updates: Partial<InsertDriverVehicle>,
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
+  const { error } = await db
+    .from("driver_vehicles")
+    .update(
+      removeUndefined({
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      })
+    )
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteDriverVehicle(id: number, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { error } = await db.from("driver_vehicles").delete().eq("id", id);
   if (error) throw error;
 }

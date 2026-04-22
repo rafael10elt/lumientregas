@@ -1,187 +1,355 @@
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MapPin, Navigation, AlertCircle } from "lucide-react";
+import { lookupCep } from "@/lib/cep";
 import { trpc } from "@/lib/trpc";
+import { ArrowDown, ArrowUp, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+type RoutePlanItem = any & {
+  routeOrder?: number | null;
+  distanceFromPreviousKm?: number | null;
+};
+
+type RoutePlans = Record<number, RoutePlanItem[]>;
 
 export default function Routes() {
-  const [selectedDriver, setSelectedDriver] = useState<string>("");
+  const [basePostalCode, setBasePostalCode] = useState("");
   const [baseAddress, setBaseAddress] = useState("Rua Principal, 1 - Centro");
-  const [optimizedRoute, setOptimizedRoute] = useState<any[]>([]);
+  const [selectedDriverId, setSelectedDriverId] = useState<string>("all");
+  const [routePlans, setRoutePlans] = useState<RoutePlans>({});
+  const [activeDriverIds, setActiveDriverIds] = useState<number[]>([]);
+  const [loadingBase, setLoadingBase] = useState(false);
 
-  const { data: deliveries = [] } = trpc.deliveries.list.useQuery({
-    status: "pendente",
+  const todayStart = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
+
+  const todayEnd = useMemo(() => {
+    const date = new Date();
+    date.setHours(23, 59, 59, 999);
+    return date;
+  }, []);
+
+  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery({
+    startDate: todayStart,
+    endDate: todayEnd,
   });
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const optimizeMutation = trpc.routes.optimize.useMutation();
+  const reorderMutation = trpc.deliveries.reorder.useMutation();
 
-  const driverDeliveries = selectedDriver
-    ? deliveries.filter((d: any) => d.driverId === parseInt(selectedDriver))
-    : [];
+  const openDeliveries = useMemo(
+    () =>
+      deliveries.filter(
+        (delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"
+      ),
+    [deliveries]
+  );
 
-  const handleOptimizeRoute = async () => {
-    if (!selectedDriver) {
-      toast.error("Selecione um motorista");
+  const visibleDrivers = useMemo(() => {
+    const byDriver = new Map<number, RoutePlanItem[]>();
+    for (const delivery of openDeliveries) {
+      if (!delivery.driverId) continue;
+      const current = byDriver.get(delivery.driverId) ?? [];
+      current.push(delivery);
+      byDriver.set(delivery.driverId, current);
+    }
+
+    const result = drivers.filter((driver: any) =>
+      selectedDriverId === "all" ? true : driver.id === Number(selectedDriverId)
+    );
+
+    return result.map((driver: any) => ({
+      driver,
+      deliveries: byDriver.get(driver.id) ?? [],
+    }));
+  }, [drivers, openDeliveries, selectedDriverId]);
+
+  const fillBaseFromCep = async () => {
+    if (!basePostalCode) {
+      toast.error("Informe o CEP da base");
       return;
     }
 
-    if (driverDeliveries.length === 0) {
-      toast.error("Nenhuma entrega pendente para este motorista");
-      return;
+    setLoadingBase(true);
+    try {
+      const result = await lookupCep(basePostalCode);
+      setBasePostalCode(result.cep);
+      setBaseAddress(result.fullAddress);
+      toast.success("Base preenchida com sucesso");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível consultar o CEP");
+    } finally {
+      setLoadingBase(false);
     }
+  };
 
-    const optimized = [...driverDeliveries].sort((a: any, b: any) => {
-      const aKey = a.destinationPostalCode || a.scheduledAt || a.destinationAddress;
-      const bKey = b.destinationPostalCode || b.scheduledAt || b.destinationAddress;
-      return String(aKey).localeCompare(String(bKey));
+  const generateRoute = async (driverId: number) => {
+    try {
+      const data = await optimizeMutation.mutateAsync({
+        driverId,
+        baseAddress,
+        scheduledAt: todayStart,
+      });
+
+      setRoutePlans(prev => ({
+        ...prev,
+        [driverId]: (data?.deliveries ?? []).map((delivery: any) => ({
+          ...delivery,
+          routeOrder: delivery.routeOrder,
+        })),
+      }));
+
+      if (!activeDriverIds.includes(driverId)) {
+        setActiveDriverIds(prev => [...prev, driverId]);
+      }
+
+      toast.success("Rota gerada e pronta para revisão");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível gerar a rota");
+    }
+  };
+
+  const moveStop = (driverId: number, index: number, direction: -1 | 1) => {
+    setRoutePlans(prev => {
+      const plan = [...(prev[driverId] ?? [])];
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= plan.length) return prev;
+      [plan[index], plan[targetIndex]] = [plan[targetIndex], plan[index]];
+      return {
+        ...prev,
+        [driverId]: plan.map((item, idx) => ({ ...item, routeOrder: idx + 1 })),
+      };
     });
+  };
 
-    setOptimizedRoute(optimized);
-    toast.success("Rota otimizada com sucesso");
+  const saveRoute = async (driverId: number) => {
+    const plan = routePlans[driverId] ?? [];
+    if (plan.length === 0) {
+      toast.error("Não há rota gerada para salvar");
+      return;
+    }
+
+    try {
+      await reorderMutation.mutateAsync({
+        driverId,
+        scheduledAt: todayStart,
+        order: plan.map((item, index) => ({
+          id: item.id,
+          routeOrder: index + 1,
+        })),
+      });
+
+      setActiveDriverIds(prev => (prev.includes(driverId) ? prev : [...prev, driverId]));
+      toast.success("Rota salva com sucesso");
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível salvar a rota");
+    }
+  };
+
+  const resetRoute = (driverId: number) => {
+    setRoutePlans(prev => {
+      const next = { ...prev };
+      delete next[driverId];
+      return next;
+    });
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Roteirização</h1>
-        <p className="text-muted-foreground mt-1">Visualizar e otimizar rotas de entregas</p>
+        <p className="text-muted-foreground mt-1">
+          Revisão de rotas automáticas, ordenação manual e base por CEP.
+        </p>
       </div>
 
-      {/* Route Configuration */}
       <Card>
         <CardHeader>
-          <CardTitle>Configurar Rota</CardTitle>
-          <CardDescription>Selecione um motorista e otimize a rota</CardDescription>
+          <CardTitle>Base operacional</CardTitle>
+          <CardDescription>
+            Informe o CEP da origem para preencher o endereço completo automaticamente.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-foreground">Endereço Base</label>
-            <div className="flex gap-2 mt-2">
-              <input
-                type="text"
-                value={baseAddress}
-                onChange={(e) => setBaseAddress(e.target.value)}
-                className="flex-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                placeholder="Endereço de partida"
-              />
-            </div>
+        <CardContent className="grid gap-4 md:grid-cols-[1fr,2fr,auto]">
+          <div className="space-y-2">
+            <Label>CEP da base</Label>
+            <Input
+              placeholder="00000-000"
+              value={basePostalCode}
+              onChange={e => setBasePostalCode(e.target.value)}
+            />
           </div>
-
-          <div>
-            <label className="text-sm font-medium text-foreground">Motorista</label>
-            <Select value={selectedDriver} onValueChange={setSelectedDriver}>
-              <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Selecione um motorista" />
-              </SelectTrigger>
-              <SelectContent>
-                {drivers.map((driver: any) => (
-                  <SelectItem key={driver.id} value={String(driver.id)}>
-                    {driver.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-2">
+            <Label>Endereço base</Label>
+            <Input value={baseAddress} onChange={e => setBaseAddress(e.target.value)} />
           </div>
-
-          <Button
-            onClick={handleOptimizeRoute}
-            className="w-full gap-2 bg-primary hover:bg-primary/90"
-          >
-            <Navigation className="w-4 h-4" />
-            Otimizar Rota
-          </Button>
+          <div className="flex items-end">
+            <Button variant="outline" onClick={fillBaseFromCep} disabled={loadingBase}>
+              <Search className="mr-2 h-4 w-4" />
+              Consultar CEP
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Map View */}
-      {optimizedRoute.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Mapa da Rota</CardTitle>
-            <CardDescription>Visualização da rota otimizada</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="bg-muted rounded-lg h-96 flex items-center justify-center">
-              <div className="text-center">
-                <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Organização automática por CEP. Integração com mapa pode vir na próxima fase.
-                </p>
-              </div>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid gap-4 lg:grid-cols-4">
+            <div className="space-y-2 lg:col-span-2">
+              <Label>Motorista</Label>
+              <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos os motoristas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os motoristas</SelectItem>
+                  {drivers.map((driver: any) => (
+                    <SelectItem key={driver.id} value={String(driver.id)}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setRoutePlans({});
+                  setActiveDriverIds([]);
+                }}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Limpar revisões
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Entregas em aberto</p>
+            <p className="text-2xl font-semibold">{openDeliveries.length}</p>
           </CardContent>
         </Card>
-      )}
-
-      {/* Route Details */}
-      {optimizedRoute.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>Detalhes da Rota</CardTitle>
-            <CardDescription>
-              {optimizedRoute.length} paradas | Motorista:{" "}
-              {drivers.find((d: any) => d.id === parseInt(selectedDriver))?.name}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {/* Starting point */}
-              <div className="flex gap-4 pb-4 border-b border-border">
-                <div className="flex flex-col items-center">
-                  <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
-                    0
-                  </div>
-                  <div className="w-0.5 h-12 bg-border mt-2" />
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Motoristas com rota</p>
+            <p className="text-2xl font-semibold">{visibleDrivers.filter(entry => entry.deliveries.length > 0).length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Rotas revisadas</p>
+            <p className="text-2xl font-semibold">{activeDriverIds.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Base</p>
+            <p className="text-sm font-medium truncate">{baseAddress}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {visibleDrivers.map(({ driver, deliveries: driverDeliveries }: any) => {
+        const currentPlan = routePlans[driver.id] ?? driverDeliveries;
+        const hasPlan = Boolean(routePlans[driver.id]);
+
+        return (
+          <Card key={driver.id}>
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <CardTitle>{driver.name}</CardTitle>
+                  <CardDescription>
+                    {driverDeliveries.length} entregas em aberto para hoje
+                  </CardDescription>
                 </div>
-                <div className="flex-1 pt-1">
-                  <p className="font-semibold text-foreground">Ponto de Partida</p>
-                  <p className="text-sm text-muted-foreground">{baseAddress}</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => generateRoute(driver.id)} disabled={driverDeliveries.length === 0}>
+                    <Navigation className="mr-2 h-4 w-4" />
+                    Gerar rota automática
+                  </Button>
+                  <Button variant="default" onClick={() => saveRoute(driver.id)} disabled={!hasPlan}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Salvar revisão
+                  </Button>
                 </div>
               </div>
-
-              {/* Route stops */}
-              {optimizedRoute.map((delivery: any, index: number) => (
-                <div key={delivery.id} className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-accent text-accent-foreground flex items-center justify-center text-sm font-bold">
-                      {index + 1}
+            </CardHeader>
+            <CardContent>
+              {currentPlan.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+                  Nenhuma entrega atribuída para este motorista hoje.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {currentPlan.map((delivery: any, index: number) => (
+                    <div key={delivery.id} className="flex items-start gap-3 rounded-lg border p-4">
+                      <div className="flex flex-col items-center gap-2 pt-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => moveStop(driver.id, index, -1)}
+                          disabled={index === 0 || !hasPlan}
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
+                          {delivery.routeOrder ?? index + 1}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => moveStop(driver.id, index, 1)}
+                          disabled={index === currentPlan.length - 1 || !hasPlan}
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="font-semibold">{delivery.clientName}</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              <MapPin className="h-4 w-4" />
+                              {delivery.destinationAddress}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {delivery.destinationPostalCode || "Sem CEP"} • Ordem{" "}
+                              {delivery.routeOrder ?? index + 1}
+                            </div>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            <div>{delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "Sem agendamento"}</div>
+                            <div>
+                              {delivery.distanceFromPreviousKm != null
+                                ? `${delivery.distanceFromPreviousKm} km da parada anterior`
+                                : "Distância em revisão"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    {index < optimizedRoute.length - 1 && (
-                      <div className="w-0.5 h-24 bg-border mt-2" />
-                    )}
-                  </div>
-                  <div className="flex-1 pt-1 pb-4">
-                    <p className="font-semibold text-foreground">{delivery.clientName}</p>
-                    <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                      <MapPin className="w-4 h-4" />
-                      {delivery.destinationAddress}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {delivery.destinationPostalCode || "Sem CEP"}
-                    </p>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Empty State */}
-      {optimizedRoute.length === 0 && (
-        <Card>
-          <CardContent className="pt-12 pb-12">
-            <div className="text-center">
-              <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                Selecione um motorista e otimize uma rota para visualizar os detalhes
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

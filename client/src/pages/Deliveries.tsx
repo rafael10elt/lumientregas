@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,13 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { lookupCep } from "@/lib/cep";
-import { Calendar, MapPin, Package2, Pencil, Plus, Search, Truck } from "lucide-react";
+import { Calendar, MapPin, Package2, Pencil, Plus, Search, ShieldAlert, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const DELIVERY_STATUSES = [
+  { value: "all", label: "Todos" },
   { value: "pendente", label: "Pendente" },
-  { value: "em_rota", label: "Em Rota" },
+  { value: "em_rota", label: "Em rota" },
   { value: "entregue", label: "Entregue" },
   { value: "cancelado", label: "Cancelado" },
 ] as const;
@@ -36,6 +38,11 @@ type DeliveryForm = {
   scheduledAt: string;
 };
 
+type RescheduleForm = {
+  driverId: string;
+  scheduledAt: string;
+};
+
 const emptyForm: DeliveryForm = {
   clientName: "",
   originPostalCode: "",
@@ -52,16 +59,38 @@ export default function Deliveries() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<number[] | null>(null);
+  const [rescheduleForm, setRescheduleForm] = useState<RescheduleForm>({
+    driverId: "",
+    scheduledAt: "",
+  });
   const [loadingCep, setLoadingCep] = useState<"origin" | "destination" | null>(null);
   const [formData, setFormData] = useState<DeliveryForm>(emptyForm);
 
-  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(
-    statusFilter === "all" ? undefined : { status: statusFilter }
-  );
+  const queryInput = useMemo(() => {
+    const input: {
+      status?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {};
+
+    if (statusFilter !== "all") input.status = statusFilter;
+    if (startDate) input.startDate = new Date(`${startDate}T00:00:00`);
+    if (endDate) input.endDate = new Date(`${endDate}T23:59:59`);
+    return input;
+  }, [endDate, startDate, statusFilter]);
+
+  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(queryInput);
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
   const createMutation = trpc.deliveries.create.useMutation();
   const updateMutation = trpc.deliveries.update.useMutation();
   const deleteMutation = trpc.deliveries.delete.useMutation();
+  const bulkDeleteMutation = trpc.deliveries.bulkDelete.useMutation();
+  const bulkRescheduleMutation = trpc.deliveries.bulkReschedule.useMutation();
 
   const visibleDeliveries = useMemo(() => {
     const filtered = deliveries.filter((d: any) =>
@@ -73,11 +102,14 @@ export default function Deliveries() {
     );
 
     return [...filtered].sort((a: any, b: any) => {
-      const aKey = a.destinationPostalCode || a.scheduledAt || "";
-      const bKey = b.destinationPostalCode || b.scheduledAt || "";
+      const aKey = Number.isFinite(a.routeOrder) ? a.routeOrder : a.scheduledAt || "";
+      const bKey = Number.isFinite(b.routeOrder) ? b.routeOrder : b.scheduledAt || "";
       return String(aKey).localeCompare(String(bKey));
     });
   }, [deliveries, searchTerm]);
+
+  const selectedDeliveries = visibleDeliveries.filter((delivery: any) => selectedIds.includes(delivery.id));
+  const openDeliveries = visibleDeliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado");
 
   const openCreate = () => {
     setEditingId(null);
@@ -157,13 +189,7 @@ export default function Deliveries() {
       if (editingId) {
         await updateMutation.mutateAsync({
           id: editingId,
-          originPostalCode: payload.originPostalCode,
-          originAddress: payload.originAddress,
-          destinationPostalCode: payload.destinationPostalCode,
-          destinationAddress: payload.destinationAddress,
-          driverId: payload.driverId,
-          notes: payload.notes,
-          status: undefined,
+          ...payload,
         });
         toast.success("Entrega atualizada com sucesso");
       } else {
@@ -204,13 +230,71 @@ export default function Deliveries() {
     }
   };
 
+  const bulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Excluir ${selectedIds.length} entregas selecionadas?`)) return;
+
+    try {
+      await bulkDeleteMutation.mutateAsync(selectedIds);
+      setSelectedIds([]);
+      toast.success("Entregas excluídas");
+      refetch();
+    } catch {
+      toast.error("Não foi possível excluir as entregas selecionadas");
+    }
+  };
+
+  const openReschedule = (ids: number[]) => {
+    setRescheduleTarget(ids);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setRescheduleForm({
+      driverId: "",
+      scheduledAt: tomorrow.toISOString().slice(0, 16),
+    });
+    setRescheduleOpen(true);
+  };
+
+  const submitReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleForm.scheduledAt) {
+      toast.error("Informe o novo dia");
+      return;
+    }
+
+    try {
+      await bulkRescheduleMutation.mutateAsync({
+        ids: rescheduleTarget,
+        driverId: rescheduleForm.driverId ? Number(rescheduleForm.driverId) : undefined,
+        scheduledAt: new Date(rescheduleForm.scheduledAt),
+        status: "pendente",
+      });
+      setRescheduleOpen(false);
+      setRescheduleTarget(null);
+      setSelectedIds([]);
+      toast.success("Entregas remanejadas");
+      refetch();
+    } catch {
+      toast.error("Não foi possível remanejar as entregas");
+    }
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    setSelectedIds(checked ? visibleDeliveries.map((delivery: any) => delivery.id) : []);
+  };
+
+  const toggleSelected = (deliveryId: number, checked: boolean) => {
+    setSelectedIds(prev =>
+      checked ? [...prev, deliveryId] : prev.filter(id => id !== deliveryId)
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Entregas</h1>
           <p className="text-muted-foreground mt-1">
-            Cadastro, organização de rota e acompanhamento operacional
+            Cadastro, revisão, remanejamento e acompanhamento operacional
           </p>
         </div>
 
@@ -328,50 +412,39 @@ export default function Deliveries() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Package2 className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">Total visível</p>
-                <p className="text-2xl font-semibold">{visibleDeliveries.length}</p>
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">Em andamento</p>
+            <p className="text-2xl font-semibold">{openDeliveries.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Truck className="h-5 w-5 text-blue-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Em rota</p>
-                <p className="text-2xl font-semibold">
-                  {visibleDeliveries.filter((d: any) => d.status === "em_rota").length}
-                </p>
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">Selecionadas</p>
+            <p className="text-2xl font-semibold">{selectedIds.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Calendar className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Entregues</p>
-                <p className="text-2xl font-semibold">
-                  {visibleDeliveries.filter((d: any) => d.status === "entregue").length}
-                </p>
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">Rota em revisão</p>
+            <p className="text-2xl font-semibold">{visibleDeliveries.filter((d: any) => d.routeOrder != null).length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Entregues</p>
+            <p className="text-2xl font-semibold">
+              {visibleDeliveries.filter((d: any) => d.status === "entregue").length}
+            </p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4 flex-col lg:flex-row">
-            <div className="flex-1 relative">
+          <div className="grid gap-4 lg:grid-cols-4">
+            <div className="flex-1 relative lg:col-span-2">
               <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar por cliente, CEP ou endereço..."
@@ -380,12 +453,15 @@ export default function Deliveries() {
                 className="pl-10"
               />
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full lg:w-56">
+              <SelectTrigger>
                 <SelectValue placeholder="Filtrar por status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os status</SelectItem>
                 {DELIVERY_STATUSES.map(status => (
                   <SelectItem key={status.value} value={status.value}>
                     {status.label}
@@ -397,11 +473,33 @@ export default function Deliveries() {
         </CardContent>
       </Card>
 
+      {selectedIds.length > 0 ? (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                {selectedIds.length} entregas selecionadas
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => openReschedule(selectedIds)}>
+                  Remanejar selecionadas
+                </Button>
+                <Button variant="destructive" onClick={bulkDelete}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Excluir em lote
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Lista de Entregas</CardTitle>
           <CardDescription>
-            {visibleDeliveries.length} entregas encontradas. A ordenação já prioriza o CEP/data para apoiar a rota.
+            {visibleDeliveries.length} entregas encontradas. A ordenação considera a ordem manual e, depois, a data.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -409,77 +507,141 @@ export default function Deliveries() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="w-10 py-3 px-4">
+                    <Checkbox
+                      checked={visibleDeliveries.length > 0 && selectedIds.length === visibleDeliveries.length}
+                      onCheckedChange={value => toggleSelectAll(Boolean(value))}
+                    />
+                  </th>
                   <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Cliente</th>
                   <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Destino</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Motorista</th>
                   <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Status</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Agenda</th>
                   <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleDeliveries.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-10 text-center text-muted-foreground">
                       Nenhuma entrega encontrada
                     </td>
                   </tr>
                 ) : (
-                  visibleDeliveries.map((delivery: any) => (
-                    <tr key={delivery.id} className="border-b border-border hover:bg-muted/50">
-                      <td className="py-3 px-4">
-                        <div className="font-medium">{delivery.clientName}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {delivery.originPostalCode || "-"} | {delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "Sem agendamento"}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-start gap-2 text-muted-foreground">
-                          <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                          <div>
-                            <div className="font-medium text-foreground">{delivery.destinationAddress}</div>
-                            <div className="text-xs">{delivery.destinationPostalCode || "-"}</div>
+                  visibleDeliveries.map((delivery: any) => {
+                    const isSelected = selectedIds.includes(delivery.id);
+                    const canReschedule = delivery.status !== "entregue" && delivery.status !== "cancelado";
+
+                    return (
+                      <tr key={delivery.id} className="border-b border-border hover:bg-muted/50">
+                        <td className="py-3 px-4">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={value => toggleSelected(delivery.id, Boolean(value))}
+                          />
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-medium">{delivery.clientName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {delivery.originPostalCode || "-"}
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-muted-foreground">
-                        {delivery.driverId ? `Motorista ${delivery.driverId}` : "Sem motorista"}
-                      </td>
-                      <td className="py-3 px-4">
-                        <Select value={delivery.status} onValueChange={value => updateDeliveryStatus(delivery.id, value)}>
-                          <SelectTrigger className="w-44">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {DELIVERY_STATUSES.map(status => (
-                              <SelectItem key={status.value} value={status.value}>
-                                {status.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[delivery.status] || "bg-gray-100 text-gray-800"}`}>
-                          {DELIVERY_STATUSES.find(s => s.value === delivery.status)?.label ?? delivery.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(delivery)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Editar
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => deleteDelivery(delivery.id)}>
-                            Excluir
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-start gap-2 text-muted-foreground">
+                            <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                            <div>
+                              <div className="font-medium text-foreground">{delivery.destinationAddress}</div>
+                              <div className="text-xs">{delivery.destinationPostalCode || "-"}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Select value={delivery.status} onValueChange={value => updateDeliveryStatus(delivery.id, value)}>
+                            <SelectTrigger className="w-44">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DELIVERY_STATUSES.filter(status => status.value !== "all").map(status => (
+                                <SelectItem key={status.value} value={status.value}>
+                                  {status.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[delivery.status] || "bg-gray-100 text-gray-800"}`}>
+                            {DELIVERY_STATUSES.find(s => s.value === delivery.status)?.label ?? delivery.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-muted-foreground">
+                          <div>{delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "Sem agendamento"}</div>
+                          <div className="text-xs">Ordem: {delivery.routeOrder ?? "automática"}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(delivery)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Editar
+                            </Button>
+                            {canReschedule ? (
+                              <Button variant="ghost" size="sm" onClick={() => openReschedule([delivery.id])}>
+                                <Calendar className="mr-2 h-4 w-4" />
+                                Remanejar
+                              </Button>
+                            ) : null}
+                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => deleteDelivery(delivery.id)}>
+                              Excluir
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remanejar entregas</DialogTitle>
+            <DialogDescription>
+              Reagende para o dia seguinte ou para a data desejada e escolha o motorista.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Motorista</Label>
+              <Select value={rescheduleForm.driverId || "unassigned"} onValueChange={value => setRescheduleForm(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um motorista" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Manter motorista atual</SelectItem>
+                  {drivers.map((driver: any) => (
+                    <SelectItem key={driver.id} value={String(driver.id)}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Nova data</Label>
+              <Input
+                type="datetime-local"
+                value={rescheduleForm.scheduledAt}
+                onChange={e => setRescheduleForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
+              />
+            </div>
+            <Button onClick={submitReschedule} className="w-full">
+              Confirmar remanejamento
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

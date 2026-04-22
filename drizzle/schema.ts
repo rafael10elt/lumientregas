@@ -34,8 +34,30 @@ export type Driver = {
   phone: string | null;
   vehicle: string | null;
   status: DriverStatus;
+  vehicles?: DriverVehicle[];
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type DriverVehicle = {
+  id: number;
+  driverId: number;
+  model: string;
+  plate: string;
+  nickname: string | null;
+  isPrimary: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type InsertDriverVehicle = {
+  driverId: number;
+  model: string;
+  plate: string;
+  nickname?: string | null;
+  isPrimary?: boolean;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 };
 
 export type InsertDriver = {
@@ -62,6 +84,7 @@ export type Delivery = {
   driverId: number | null;
   createdByUserId: number | null;
   status: DeliveryStatus;
+  routeOrder: number | null;
   scheduledAt: Date | null;
   notes: string | null;
   distance: string | null;
@@ -83,6 +106,7 @@ export type InsertDelivery = {
   driverId?: number | null;
   createdByUserId?: number | null;
   status?: DeliveryStatus;
+  routeOrder?: number | null;
   scheduledAt?: Date | string | null;
   notes?: string | null;
   distance?: string | null;

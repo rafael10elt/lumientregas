@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
-import { Pencil, Plus, Truck } from "lucide-react";
+import { Pencil, Plus, Trash2, Truck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -35,11 +35,26 @@ export default function Drivers() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<DriverForm>(emptyForm);
+  const [selectedDriverId, setSelectedDriverId] = useState<number | null>(null);
+  const [vehicleForm, setVehicleForm] = useState({
+    model: "",
+    plate: "",
+    nickname: "",
+    isPrimary: false,
+  });
 
   const { data: drivers = [], refetch } = trpc.drivers.list.useQuery();
   const createMutation = trpc.drivers.create.useMutation();
   const updateMutation = trpc.drivers.update.useMutation();
   const deleteMutation = trpc.drivers.delete.useMutation();
+  const { data: vehicles = [], refetch: refetchVehicles } = trpc.driverVehicles.list.useQuery(
+    selectedDriverId ? { driverId: selectedDriverId } : undefined,
+    {
+      enabled: Boolean(selectedDriverId),
+    }
+  );
+  const createVehicleMutation = trpc.driverVehicles.create.useMutation();
+  const deleteVehicleMutation = trpc.driverVehicles.delete.useMutation();
 
   const sortedDrivers = useMemo(
     () => [...drivers].sort((a: any, b: any) => a.name.localeCompare(b.name)),
@@ -86,6 +101,44 @@ export default function Drivers() {
       refetch();
     } catch {
       toast.error("Não foi possível salvar o motorista");
+    }
+  };
+
+  const submitVehicle = async () => {
+    if (!selectedDriverId) {
+      toast.error("Selecione um motorista");
+      return;
+    }
+    if (!vehicleForm.model || !vehicleForm.plate) {
+      toast.error("Informe modelo e placa");
+      return;
+    }
+
+    try {
+      await createVehicleMutation.mutateAsync({
+        driverId: selectedDriverId,
+        model: vehicleForm.model,
+        plate: vehicleForm.plate.toUpperCase(),
+        nickname: vehicleForm.nickname || undefined,
+        isPrimary: vehicleForm.isPrimary,
+      });
+      setVehicleForm({ model: "", plate: "", nickname: "", isPrimary: false });
+      toast.success("Veículo adicionado");
+      refetchVehicles();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível salvar o veículo");
+    }
+  };
+
+  const removeVehicle = async (vehicleId: number) => {
+    if (!confirm("Deseja excluir este veículo?")) return;
+
+    try {
+      await deleteVehicleMutation.mutateAsync(vehicleId);
+      toast.success("Veículo excluído");
+      refetchVehicles();
+    } catch {
+      toast.error("Não foi possível excluir o veículo");
     }
   };
 
@@ -255,6 +308,122 @@ export default function Drivers() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Veículos do Motorista</CardTitle>
+          <CardDescription>
+            Cada motorista pode ter vários veículos cadastrados com modelo e placa.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="space-y-2 md:col-span-2">
+              <Label>Motorista</Label>
+              <Select
+                value={selectedDriverId ? String(selectedDriverId) : ""}
+                onValueChange={value => setSelectedDriverId(Number(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um motorista" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedDrivers.map((driver: any) => (
+                    <SelectItem key={driver.id} value={String(driver.id)}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Modelo</Label>
+              <Input
+                value={vehicleForm.model}
+                onChange={e => setVehicleForm(prev => ({ ...prev, model: e.target.value }))}
+                placeholder="Ex: Fiorino"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Placa</Label>
+              <Input
+                value={vehicleForm.plate}
+                onChange={e => setVehicleForm(prev => ({ ...prev, plate: e.target.value }))}
+                placeholder="ABC1D23"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Apelido</Label>
+              <Input
+                value={vehicleForm.nickname}
+                onChange={e => setVehicleForm(prev => ({ ...prev, nickname: e.target.value }))}
+                placeholder="Carro principal, reserva..."
+              />
+            </div>
+            <div className="space-y-2 flex items-end">
+              <Button
+                variant={vehicleForm.isPrimary ? "default" : "outline"}
+                className="w-full"
+                onClick={() => setVehicleForm(prev => ({ ...prev, isPrimary: !prev.isPrimary }))}
+              >
+                {vehicleForm.isPrimary ? "Principal" : "Marcar como principal"}
+              </Button>
+            </div>
+          </div>
+          <Button onClick={submitVehicle} disabled={!selectedDriverId}>
+            Adicionar veículo
+          </Button>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 text-muted-foreground">Modelo</th>
+                  <th className="text-left py-3 px-4 text-muted-foreground">Placa</th>
+                  <th className="text-left py-3 px-4 text-muted-foreground">Apelido</th>
+                  <th className="text-left py-3 px-4 text-muted-foreground">Principal</th>
+                  <th className="text-left py-3 px-4 text-muted-foreground">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!selectedDriverId ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                      Selecione um motorista para ver os veículos
+                    </td>
+                  </tr>
+                ) : vehicles.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                      Nenhum veículo cadastrado para este motorista
+                    </td>
+                  </tr>
+                ) : (
+                  vehicles.map((vehicle: any) => (
+                    <tr key={vehicle.id} className="border-b border-border hover:bg-muted/50">
+                      <td className="py-3 px-4 font-medium">{vehicle.model}</td>
+                      <td className="py-3 px-4 text-muted-foreground">{vehicle.plate}</td>
+                      <td className="py-3 px-4 text-muted-foreground">{vehicle.nickname || "-"}</td>
+                      <td className="py-3 px-4">{vehicle.isPrimary ? "Sim" : "Não"}</td>
+                      <td className="py-3 px-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => removeVehicle(vehicle.id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Excluir
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
