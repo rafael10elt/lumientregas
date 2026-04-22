@@ -13,7 +13,7 @@ import Login from "./pages/Login";
 import { useAuth } from "./_core/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType<any> }) {
+function Router() {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
@@ -28,45 +28,17 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     return <Login />;
   }
 
-  return <Component />;
-}
-
-function Router() {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
-    <Switch>
-      <Route path="/login" component={Login} />
-      
-      {isAuthenticated && (
-        <>
-          <Route path="/" nest>
-            {(params) => (
-              <DashboardLayout>
-                <Switch>
-                  <Route path="/" component={Dashboard} />
-                  <Route path="/deliveries" component={Deliveries} />
-                  <Route path="/routes" component={Routes} />
-                  <Route path="/analytics" component={Analytics} />
-                  <Route component={NotFound} />
-                </Switch>
-              </DashboardLayout>
-            )}
-          </Route>
-        </>
-      )}
-
-      <Route path="/404" component={NotFound} />
-      <Route component={NotFound} />
-    </Switch>
+    <DashboardLayout>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/deliveries" component={Deliveries} />
+        <Route path="/routes" component={Routes} />
+        <Route path="/analytics" component={Analytics} />
+        <Route path="/login" component={Login} />
+        <Route component={NotFound} />
+      </Switch>
+    </DashboardLayout>
   );
 }
 
