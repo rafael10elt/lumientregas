@@ -36,8 +36,13 @@ function removeUndefined<T extends Record<string, unknown>>(value: T): Partial<T
 
 function normalizeUser(row: Record<string, any>): User {
   return {
-    ...row,
     id: Number(row.id),
+    openId: String(row.openId),
+    authUserId: row.authUserId ?? null,
+    name: row.name ?? null,
+    email: row.email ?? null,
+    loginMethod: row.loginMethod ?? null,
+    role: row.role,
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
     lastSignedIn: toDate(row.lastSignedIn)!,
@@ -46,8 +51,12 @@ function normalizeUser(row: Record<string, any>): User {
 
 function normalizeDriver(row: Record<string, any>): Driver {
   return {
-    ...row,
     id: Number(row.id),
+    name: String(row.name),
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+    vehicle: row.vehicle ?? null,
+    status: row.status,
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
   };
@@ -55,11 +64,21 @@ function normalizeDriver(row: Record<string, any>): Driver {
 
 function normalizeDelivery(row: Record<string, any>): Delivery {
   return {
-    ...row,
     id: Number(row.id),
+    clientName: String(row.clientName),
+    originAddress: String(row.originAddress),
+    originLat: row.originLat ?? null,
+    originLng: row.originLng ?? null,
+    destinationAddress: String(row.destinationAddress),
+    destinationLat: row.destinationLat ?? null,
+    destinationLng: row.destinationLng ?? null,
     driverId: row.driverId == null ? null : Number(row.driverId),
     createdByUserId: row.createdByUserId == null ? null : Number(row.createdByUserId),
+    status: row.status,
     scheduledAt: toDate(row.scheduledAt),
+    notes: row.notes ?? null,
+    distance: row.distance ?? null,
+    estimatedTime: row.estimatedTime ?? null,
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
   };
