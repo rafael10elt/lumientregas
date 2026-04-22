@@ -7,10 +7,13 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import Deliveries from "./pages/Deliveries";
+import Drivers from "./pages/Drivers";
+import Users from "./pages/Users";
 import Routes from "./pages/Routes";
 import Analytics from "./pages/Analytics";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
+import DriverPortal from "./pages/DriverPortal";
 import { useAuth } from "./_core/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
@@ -40,7 +43,10 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/deliveries" component={Deliveries} />
+        <Route path="/drivers" component={Drivers} />
+        <Route path="/users" component={Users} />
         <Route path="/routes" component={Routes} />
+        <Route path="/driver" component={DriverPortal} />
         <Route path="/analytics" component={Analytics} />
         <Route path="/login" component={Login} />
         <Route component={NotFound} />

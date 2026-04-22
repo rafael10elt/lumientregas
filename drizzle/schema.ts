@@ -51,9 +51,11 @@ export type InsertDriver = {
 export type Delivery = {
   id: number;
   clientName: string;
+  originPostalCode: string | null;
   originAddress: string;
   originLat: string | null;
   originLng: string | null;
+  destinationPostalCode: string | null;
   destinationAddress: string;
   destinationLat: string | null;
   destinationLng: string | null;
@@ -70,9 +72,11 @@ export type Delivery = {
 
 export type InsertDelivery = {
   clientName: string;
+  originPostalCode?: string | null;
   originAddress: string;
   originLat?: string | null;
   originLng?: string | null;
+  destinationPostalCode?: string | null;
   destinationAddress: string;
   destinationLat?: string | null;
   destinationLng?: string | null;

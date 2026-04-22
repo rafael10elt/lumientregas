@@ -1,16 +1,23 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
+  createAuthUser,
   createDelivery,
+  deleteDelivery,
   createDriver,
+  deleteDriver,
+  getUserByOpenId,
   getDeliveries,
   getDeliveryById,
   getDrivers,
   getDriverById,
+  getUsers,
+  deleteUserAccount,
   updateDelivery,
   updateDriver,
+  updateUser,
 } from "./db";
 import { z } from "zod";
 
@@ -47,9 +54,11 @@ export const appRouter = router({
       .input(
         z.object({
           clientName: z.string(),
+          originPostalCode: z.string().optional(),
           originAddress: z.string(),
           originLat: z.string().optional(),
           originLng: z.string().optional(),
+          destinationPostalCode: z.string().optional(),
           destinationAddress: z.string(),
           destinationLat: z.string().optional(),
           destinationLng: z.string().optional(),
@@ -61,7 +70,13 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        await createDelivery(input, ctx.accessToken);
+        await createDelivery(
+          {
+            ...input,
+            createdByUserId: ctx.user?.id ?? null,
+          },
+          ctx.accessToken
+        );
         return { success: true };
       }),
 
@@ -72,11 +87,22 @@ export const appRouter = router({
           status: z.enum(["pendente", "em_rota", "entregue", "cancelado"]).optional(),
           driverId: z.number().optional(),
           notes: z.string().optional(),
+          originPostalCode: z.string().optional(),
+          originAddress: z.string().optional(),
+          destinationPostalCode: z.string().optional(),
+          destinationAddress: z.string().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
         const { id, ...updates } = input;
         await updateDelivery(id, updates, ctx.accessToken);
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input, ctx }) => {
+        await deleteDelivery(input, ctx.accessToken);
         return { success: true };
       }),
   }),
@@ -116,6 +142,54 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const { id, ...updates } = input;
         await updateDriver(id, updates, ctx.accessToken);
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input, ctx }) => {
+        await deleteDriver(input, ctx.accessToken);
+        return { success: true };
+      }),
+  }),
+
+  users: router({
+    list: adminProcedure.query(async () => getUsers()),
+
+    create: adminProcedure
+      .input(
+        z.object({
+          email: z.string().email(),
+          password: z.string().min(6).optional(),
+          name: z.string().optional(),
+          role: z.enum(["user", "admin"]).optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const user = await createAuthUser(input);
+        return { success: true, user };
+      }),
+
+    update: adminProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          name: z.string().optional(),
+          email: z.string().optional(),
+          role: z.enum(["user", "admin"]).optional(),
+          loginMethod: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { id, ...updates } = input;
+        await updateUser(id, updates);
+        return { success: true };
+      }),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteUserAccount(input.id);
         return { success: true };
       }),
   }),

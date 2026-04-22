@@ -32,10 +32,10 @@ export default function Routes() {
       return;
     }
 
-    // Simulated route optimization
     const optimized = [...driverDeliveries].sort((a: any, b: any) => {
-      // Simple distance-based sorting (in a real app, would use Google Maps API)
-      return a.destinationAddress.localeCompare(b.destinationAddress);
+      const aKey = a.destinationPostalCode || a.scheduledAt || a.destinationAddress;
+      const bKey = b.destinationPostalCode || b.scheduledAt || b.destinationAddress;
+      return String(aKey).localeCompare(String(bKey));
     });
 
     setOptimizedRoute(optimized);
@@ -107,7 +107,7 @@ export default function Routes() {
               <div className="text-center">
                 <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
-                  Integração com Google Maps em desenvolvimento
+                  Organização automática por CEP. Integração com mapa pode vir na próxima fase.
                 </p>
               </div>
             </div>
@@ -157,6 +157,9 @@ export default function Routes() {
                     <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                       <MapPin className="w-4 h-4" />
                       {delivery.destinationAddress}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {delivery.destinationPostalCode || "Sem CEP"}
                     </p>
                   </div>
                 </div>

@@ -20,7 +20,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Package2, Truck, TrendingUp } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Package2, Truck, TrendingUp, UserCog, CarFront } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -29,7 +29,10 @@ import { Button } from "./ui/button";
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Package2, label: "Entregas", path: "/deliveries" },
+  { icon: CarFront, label: "Motoristas", path: "/drivers" },
+  { icon: UserCog, label: "Usuários", path: "/users" },
   { icon: Truck, label: "Rotas", path: "/routes" },
+  { icon: Users, label: "Painel Motorista", path: "/driver" },
   { icon: TrendingUp, label: "Analytics", path: "/analytics" },
 ];
 

@@ -57,9 +57,11 @@ function mapDelivery(row: Record<string, any>): Delivery {
   return {
     id: Number(row.id),
     clientName: String(row.clientName),
+    originPostalCode: row.originPostalCode ?? null,
     originAddress: String(row.originAddress),
     originLat: row.originLat ?? null,
     originLng: row.originLng ?? null,
+    destinationPostalCode: row.destinationPostalCode ?? null,
     destinationAddress: String(row.destinationAddress),
     destinationLat: row.destinationLat ?? null,
     destinationLng: row.destinationLng ?? null,
@@ -136,6 +138,108 @@ export async function getUserByOpenId(openId: string) {
   return data ? mapUser(data) : undefined;
 }
 
+export async function getUsers() {
+  const db = createSupabaseAdminClient();
+  const { data, error } = await db
+    .from("users")
+    .select("*")
+    .order("createdAt", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map(mapUser);
+}
+
+export async function updateUser(
+  id: number,
+  updates: Partial<Pick<InsertUser, "name" | "email" | "loginMethod"> & { role: User["role"] }>
+) {
+  const db = createSupabaseAdminClient();
+  const { error } = await db
+    .from("users")
+    .update(
+      removeUndefined({
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      })
+    )
+    .eq("id", id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function createAuthUser(input: {
+  email: string;
+  password?: string;
+  name?: string | null;
+  role?: User["role"];
+}) {
+  const db = createSupabaseAdminClient();
+  const { data, error } = await db.auth.admin.createUser({
+    email: input.email,
+    password: input.password ?? "12345678",
+    email_confirm: true,
+    user_metadata: {
+      full_name: input.name ?? input.email,
+      name: input.name ?? input.email,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data.user?.id) {
+    throw new Error("Não foi possível criar o usuário");
+  }
+
+  await ensureUserProfile({
+    openId: data.user.id,
+    authUserId: data.user.id,
+    name: input.name ?? input.email,
+    email: input.email,
+    loginMethod: "supabase",
+    role: input.role ?? "user",
+  });
+
+  return getUserByAuthUserId(data.user.id);
+}
+
+export async function deleteUserAccount(id: number) {
+  const db = createSupabaseAdminClient();
+  const { data, error } = await db
+    .from("users")
+    .select("authUserId")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data?.authUserId) {
+    const { error: deleteProfileError } = await db.from("users").delete().eq("id", id);
+    if (deleteProfileError) {
+      throw deleteProfileError;
+    }
+    return;
+  }
+
+  const { error: authError } = await db.auth.admin.deleteUser(data.authUserId);
+  if (authError) {
+    throw authError;
+  }
+
+  const { error: deleteProfileError } = await db.from("users").delete().eq("id", id);
+  if (deleteProfileError) {
+    throw deleteProfileError;
+  }
+}
+
 export async function getDeliveries(
   filters?: {
     status?: string;
@@ -173,9 +277,11 @@ export async function createDelivery(delivery: InsertDelivery, accessToken?: str
     .insert(
       removeUndefined({
         ...delivery,
+        originPostalCode: delivery.originPostalCode ?? null,
         scheduledAt: toIsoString(delivery.scheduledAt),
         createdAt: toIsoString(delivery.createdAt),
         updatedAt: toIsoString(delivery.updatedAt),
+        destinationPostalCode: delivery.destinationPostalCode ?? null,
       })
     )
     .select("*")
@@ -202,6 +308,12 @@ export async function updateDelivery(
     )
     .eq("id", id);
 
+  if (error) throw error;
+}
+
+export async function deleteDelivery(id: number, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { error } = await db.from("deliveries").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -253,5 +365,11 @@ export async function updateDriver(
     )
     .eq("id", id);
 
+  if (error) throw error;
+}
+
+export async function deleteDriver(id: number, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { error } = await db.from("drivers").delete().eq("id", id);
   if (error) throw error;
 }
