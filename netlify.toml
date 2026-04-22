@@ -1,0 +1,21 @@
+[build]
+  command = "pnpm build"
+  publish = "dist/public"
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/manus-storage/*"
+  to = "/.netlify/functions/api/manus-storage/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
