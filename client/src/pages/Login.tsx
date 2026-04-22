@@ -1,11 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RESET_PASSWORD_PATH } from "@/const";
 import { supabase } from "@/lib/supabase";
 import { Package2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { toast } from "sonner";
 
 export default function Login() {
+  const [, setLocation] = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -17,7 +20,10 @@ export default function Login() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
     setLoading(false);
 
     if (error) {
@@ -26,7 +32,7 @@ export default function Login() {
     }
 
     toast.success("Login realizado com sucesso");
-    window.location.href = "/";
+    setLocation("/");
   };
 
   const submitSignUp = async () => {
@@ -47,7 +53,29 @@ export default function Login() {
       return;
     }
 
-    toast.success("Conta criada. Se o projeto exigir confirmação por e-mail, conclua a validação antes de entrar.");
+    toast.success(
+      "Conta criada. Se o projeto exigir confirmação por e-mail, conclua a validação antes de entrar."
+    );
+  };
+
+  const submitPasswordReset = async () => {
+    if (!email) {
+      toast.error("Informe seu e-mail para receber o link de redefinição");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}${RESET_PASSWORD_PATH}`,
+    });
+    setLoading(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Enviamos um link de redefinição para o seu e-mail.");
   };
 
   return (
@@ -70,7 +98,9 @@ export default function Login() {
 
           <div className="space-y-4 text-left">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">E-mail</label>
+              <label className="text-sm font-medium text-foreground">
+                E-mail
+              </label>
               <Input
                 type="email"
                 value={email}
@@ -95,6 +125,13 @@ export default function Login() {
               </Button>
               <Button onClick={submitSignUp} variant="outline" disabled={loading}>
                 Criar usuário de teste
+              </Button>
+              <Button
+                onClick={submitPasswordReset}
+                variant="ghost"
+                disabled={loading}
+              >
+                Esqueci minha senha
               </Button>
             </div>
 

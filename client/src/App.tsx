@@ -10,11 +10,18 @@ import Deliveries from "./pages/Deliveries";
 import Routes from "./pages/Routes";
 import Analytics from "./pages/Analytics";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import { useAuth } from "./_core/hooks/useAuth";
 import { Loader2 } from "lucide-react";
+import { useLocation } from "wouter";
 
 function Router() {
   const { isAuthenticated, loading } = useAuth();
+  const [location] = useLocation();
+
+  if (location === "/trocar-senha") {
+    return <ResetPassword />;
+  }
 
   if (loading) {
     return (
