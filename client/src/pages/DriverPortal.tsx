@@ -1,10 +1,10 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { openGpsRoute } from "@/lib/navigation";
+import { openGpsRoute, openWhatsApp } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
-import { CheckCircle2, Clock3, Loader2, MapPin, Package2 } from "lucide-react";
+import { CheckCircle2, Clock3, Loader2, MapPin, MessageCircleMore, Package2 } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 
@@ -40,7 +40,7 @@ export default function DriverPortal() {
   const todayDeliveries = deliveries.filter((delivery: any) => isToday(delivery.scheduledAt));
   const historyDeliveries = deliveries.filter((delivery: any) => !isToday(delivery.scheduledAt));
 
-  const updateStatus = async (deliveryId: number, status: string) => {
+  const updateStatus = async (deliveryId: string, status: string) => {
     try {
       await updateMutation.mutateAsync({ id: deliveryId, status: status as any });
       toast.success("Status atualizado");
@@ -84,6 +84,16 @@ export default function DriverPortal() {
         <p className="text-muted-foreground mt-1">
           {driver.name} • Acompanhe as entregas do dia e atualize os status em tempo real
         </p>
+        {driver.phone ? (
+          <Button
+            variant="outline"
+            className="mt-4 gap-2"
+            onClick={() => openWhatsApp(driver.phone, `Olá ${driver.name}, tudo bem?`)}
+          >
+            <MessageCircleMore className="h-4 w-4" />
+            WhatsApp do motorista
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -144,10 +154,16 @@ export default function DriverPortal() {
                         {delivery.destinationAddress}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {delivery.destinationPostalCode || "-"} • {delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "Sem horário"}
+                        {delivery.destinationPostalCode || "-"} •{" "}
+                        {delivery.scheduledAt
+                          ? new Date(delivery.scheduledAt).toLocaleString("pt-BR")
+                          : "Sem horário"}
                       </div>
                     </div>
-                    <Select value={delivery.status} onValueChange={value => updateStatus(delivery.id, value)}>
+                    <Select
+                      value={delivery.status}
+                      onValueChange={value => updateStatus(delivery.id, value)}
+                    >
                       <SelectTrigger className="w-44">
                         <SelectValue />
                       </SelectTrigger>
@@ -192,7 +208,9 @@ export default function DriverPortal() {
                       <div className="font-semibold">{delivery.clientName}</div>
                       <div className="text-sm text-muted-foreground">{delivery.destinationAddress}</div>
                       <div className="text-xs text-muted-foreground">
-                        {delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleDateString("pt-BR") : "Sem data"}
+                        {delivery.scheduledAt
+                          ? new Date(delivery.scheduledAt).toLocaleDateString("pt-BR")
+                          : "Sem data"}
                       </div>
                     </div>
                     <Button
@@ -204,7 +222,8 @@ export default function DriverPortal() {
                       GPS
                     </Button>
                     <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
-                      {DELIVERY_STATUSES.find(status => status.value === delivery.status)?.label ?? delivery.status}
+                      {DELIVERY_STATUSES.find(status => status.value === delivery.status)?.label ??
+                        delivery.status}
                     </span>
                   </div>
                 </div>

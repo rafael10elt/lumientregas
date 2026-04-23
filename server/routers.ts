@@ -399,6 +399,10 @@ export const appRouter = router({
   tenants: router({
     list: superadminProcedure.query(async ({ ctx }) => getTenants(ctx.accessToken)),
 
+    getById: superadminProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ input, ctx }) => getTenantById(input.id)),
+
     create: superadminProcedure
       .input(
         z.object({

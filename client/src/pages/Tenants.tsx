@@ -38,6 +38,7 @@ export default function Tenants() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<TenantForm>(emptyForm);
+  const utils = trpc.useUtils();
 
   const { data: tenants = [], refetch } = trpc.tenants.list.useQuery();
   const createMutation = trpc.tenants.create.useMutation();
@@ -59,19 +60,35 @@ export default function Tenants() {
     setOpen(true);
   };
 
-  const openEdit = (tenant: any) => {
+  const openEdit = async (tenant: any) => {
     setEditingId(tenant.id);
-    setFormData({
-      name: tenant.name ?? "",
-      slug: tenant.slug ?? "",
-      contactName: tenant.contactName ?? "",
-      contactEmail: tenant.contactEmail ?? "",
-      contactPhone: tenant.contactPhone ?? "",
-      status: tenant.status ?? "active",
-      paymentStatus: tenant.paymentStatus ?? "pending",
-      notes: tenant.notes ?? "",
-    });
     setOpen(true);
+
+    try {
+      const freshTenant = await utils.tenants.getById.fetch({ id: tenant.id });
+      const source = freshTenant ?? tenant;
+      setFormData({
+        name: source.name ?? "",
+        slug: source.slug ?? "",
+        contactName: source.contactName ?? "",
+        contactEmail: source.contactEmail ?? "",
+        contactPhone: source.contactPhone ?? "",
+        status: source.status ?? "active",
+        paymentStatus: source.paymentStatus ?? "pending",
+        notes: source.notes ?? "",
+      });
+    } catch {
+      setFormData({
+        name: tenant.name ?? "",
+        slug: tenant.slug ?? "",
+        contactName: tenant.contactName ?? "",
+        contactEmail: tenant.contactEmail ?? "",
+        contactPhone: tenant.contactPhone ?? "",
+        status: tenant.status ?? "active",
+        paymentStatus: tenant.paymentStatus ?? "pending",
+        notes: tenant.notes ?? "",
+      });
+    }
   };
 
   const submit = async () => {
@@ -330,7 +347,7 @@ export default function Tenants() {
                     <td className="px-4 py-3 text-muted-foreground">{tenant.status}</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       <div className="flex items-center gap-2">
-                        <span>{tenant.contactEmail || tenant.contactPhone || "-"}</span>
+                        <span>{tenant.contactName || tenant.contactEmail || tenant.contactPhone || "-"}</span>
                         {tenant.contactPhone ? (
                           <Button
                             variant="ghost"
@@ -351,7 +368,7 @@ export default function Tenants() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(tenant)}>
+                        <Button variant="ghost" size="sm" onClick={() => void openEdit(tenant)}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Editar
                         </Button>
