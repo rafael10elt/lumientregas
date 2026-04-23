@@ -95,7 +95,7 @@ export default function Users() {
       return;
     }
 
-    if (user?.role === "superadmin" && !formData.tenantId) {
+    if (user?.role === "superadmin" && formData.role !== "superadmin" && !formData.tenantId) {
       toast.error("Selecione um tenant");
       return;
     }
@@ -221,7 +221,7 @@ export default function Users() {
                   </SelectContent>
                 </Select>
               </div>
-              {user?.role === "superadmin" ? (
+              {user?.role === "superadmin" && formData.role !== "superadmin" ? (
                 <div className="space-y-2">
                   <Label>Tenant</Label>
                   <Select

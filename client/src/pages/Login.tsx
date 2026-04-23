@@ -3,7 +3,6 @@ import { Input } from "@/components/ui/input";
 import { RESET_PASSWORD_PATH } from "@/const";
 import { BrandMark } from "@/components/BrandMark";
 import { supabase } from "@/lib/supabase";
-import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -34,29 +33,6 @@ export default function Login() {
 
     toast.success("Login realizado com sucesso");
     setLocation("/");
-  };
-
-  const submitSignUp = async () => {
-    if (!email || !password) {
-      toast.error("Informe e-mail e senha");
-      return;
-    }
-
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    toast.success(
-      "Conta criada. Se o projeto exigir confirmação por e-mail, conclua a validação antes de entrar."
-    );
   };
 
   const submitPasswordReset = async () => {
@@ -122,9 +98,6 @@ export default function Login() {
               <Button onClick={submitSignIn} disabled={loading}>
                 Entrar
               </Button>
-              <Button onClick={submitSignUp} variant="outline" disabled={loading}>
-                Criar usuário de teste
-              </Button>
               <Button
                 onClick={submitPasswordReset}
                 variant="ghost"
@@ -134,13 +107,6 @@ export default function Login() {
               </Button>
             </div>
 
-            <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-left text-xs text-blue-900">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>
-                Use o `anon key` no frontend e `service_role` apenas no backend.
-                Depois de criar o usuário, o acesso ao sistema passa a usar RLS.
-              </p>
-            </div>
           </div>
 
           <div className="mt-8 pt-8 border-t border-border">

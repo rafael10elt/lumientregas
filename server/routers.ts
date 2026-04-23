@@ -28,6 +28,7 @@ import {
   updateUser,
 } from "./db";
 import { geocodeAddress, optimizeByProximity } from "./_core/routePlanner";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 export const appRouter = router({
@@ -335,7 +336,20 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const tenantId = ctx.user?.role === "superadmin" ? input.tenantId ?? null : ctx.user?.tenantId ?? null;
+        const tenantId =
+          input.role === "superadmin"
+            ? null
+            : ctx.user?.role === "superadmin"
+              ? input.tenantId ?? null
+              : ctx.user?.tenantId ?? null;
+
+        if (input.role !== "superadmin" && !tenantId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "tenantId is required for non-superadmin users",
+          });
+        }
+
         const user = await createAuthUser({
           ...input,
           tenantId,
