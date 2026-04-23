@@ -1,3 +1,5 @@
+import { useMemo, useState } from "react";
+import AddressFields, { defaultAddressValue } from "@/components/AddressFields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -6,19 +8,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Calendar, MapPin, Plus, Search, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { lookupCep } from "@/lib/cep";
-import { Calendar, MapPin, Package2, Pencil, Plus, Search, ShieldAlert, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import OpenGpsButton from "@/components/OpenGpsButton";
 
-const DELIVERY_STATUSES = [
-  { value: "all", label: "Todos" },
-  { value: "pendente", label: "Pendente" },
-  { value: "em_rota", label: "Em rota" },
-  { value: "entregue", label: "Entregue" },
-  { value: "cancelado", label: "Cancelado" },
-] as const;
+const STATUS_LABELS: Record<string, string> = {
+  pendente: "Pendente",
+  em_rota: "Em Rota",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
+};
 
 const STATUS_COLORS: Record<string, string> = {
   pendente: "bg-yellow-100 text-yellow-800",
@@ -27,621 +27,376 @@ const STATUS_COLORS: Record<string, string> = {
   cancelado: "bg-red-100 text-red-800",
 };
 
-type DeliveryForm = {
-  clientName: string;
-  originPostalCode: string;
-  originAddress: string;
-  destinationPostalCode: string;
-  destinationAddress: string;
-  driverId: string;
-  notes: string;
-  scheduledAt: string;
-};
-
-type RescheduleForm = {
-  driverId: string;
-  scheduledAt: string;
-};
-
-const emptyForm: DeliveryForm = {
-  clientName: "",
-  originPostalCode: "",
-  originAddress: "",
-  destinationPostalCode: "",
-  destinationAddress: "",
-  driverId: "",
-  notes: "",
-  scheduledAt: "",
-};
-
 export default function Deliveries() {
   const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [rescheduleTarget, setRescheduleTarget] = useState<number[] | null>(null);
-  const [rescheduleForm, setRescheduleForm] = useState<RescheduleForm>({
-    driverId: "",
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [form, setForm] = useState({
+    clientId: "",
+    clientName: "",
+    baseId: "",
+    driverId: "none",
     scheduledAt: "",
+    notes: "",
+    origin: defaultAddressValue(),
+    destination: defaultAddressValue(),
   });
-  const [loadingCep, setLoadingCep] = useState<"origin" | "destination" | null>(null);
-  const [formData, setFormData] = useState<DeliveryForm>(emptyForm);
 
-  const queryInput = useMemo(() => {
-    const input: {
-      status?: string;
-      startDate?: Date;
-      endDate?: Date;
-    } = {};
-
-    if (statusFilter !== "all") input.status = statusFilter;
-    if (startDate) input.startDate = new Date(`${startDate}T00:00:00`);
-    if (endDate) input.endDate = new Date(`${endDate}T23:59:59`);
-    return input;
-  }, [endDate, startDate, statusFilter]);
-
-  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(queryInput);
+  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery({
+    status: statusFilter === "all" ? undefined : statusFilter,
+  });
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const { data: clients = [] } = trpc.clients.list.useQuery();
+  const { data: bases = [] } = trpc.clientBases.list.useQuery({
+    clientId: form.clientId || undefined,
+  });
+
   const createMutation = trpc.deliveries.create.useMutation();
   const updateMutation = trpc.deliveries.update.useMutation();
-  const deleteMutation = trpc.deliveries.delete.useMutation();
   const bulkDeleteMutation = trpc.deliveries.bulkDelete.useMutation();
   const bulkRescheduleMutation = trpc.deliveries.bulkReschedule.useMutation();
+  const deleteMutation = trpc.deliveries.delete.useMutation();
 
-  const visibleDeliveries = useMemo(() => {
-    const filtered = deliveries.filter((d: any) =>
-      [d.clientName, d.originAddress, d.destinationAddress, d.originPostalCode, d.destinationPostalCode]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
-    );
-
-    return [...filtered].sort((a: any, b: any) => {
-      const aKey = Number.isFinite(a.routeOrder) ? a.routeOrder : a.scheduledAt || "";
-      const bKey = Number.isFinite(b.routeOrder) ? b.routeOrder : b.scheduledAt || "";
-      return String(aKey).localeCompare(String(bKey));
+  const filteredDeliveries = useMemo(() => {
+    return deliveries.filter((delivery: any) => {
+      const search = searchTerm.toLowerCase();
+      return (
+        delivery.clientName?.toLowerCase().includes(search) ||
+        delivery.destinationAddress?.toLowerCase().includes(search) ||
+        delivery.originAddress?.toLowerCase().includes(search) ||
+        delivery.destinationPostalCode?.includes(searchTerm.replace(/\D/g, ""))
+      );
     });
   }, [deliveries, searchTerm]);
 
-  const selectedDeliveries = visibleDeliveries.filter((delivery: any) => selectedIds.includes(delivery.id));
-  const openDeliveries = visibleDeliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado");
+  const selectedCount = selectedIds.length;
 
-  const openCreate = () => {
-    setEditingId(null);
-    setFormData(emptyForm);
-    setOpen(true);
+  const syncBaseAddress = (baseId: string) => {
+    const base = bases.find((item: any) => item.id === baseId);
+    if (!base) return;
+    setForm(current => ({
+      ...current,
+      clientId: base.clientId || current.clientId,
+      baseId,
+      origin: {
+        postalCode: base.postalCode || "",
+        street: base.street || "",
+        number: base.number || "",
+        neighborhood: base.neighborhood || "",
+        city: base.city || "",
+        state: base.state || "",
+        complement: base.complement || "",
+        reference: base.reference || "",
+        latitude: base.latitude ? String(base.latitude) : "",
+        longitude: base.longitude ? String(base.longitude) : "",
+      },
+    }));
   };
 
-  const openEdit = (delivery: any) => {
-    setEditingId(delivery.id);
-    setFormData({
-      clientName: delivery.clientName ?? "",
-      originPostalCode: delivery.originPostalCode ?? "",
-      originAddress: delivery.originAddress ?? "",
-      destinationPostalCode: delivery.destinationPostalCode ?? "",
-      destinationAddress: delivery.destinationAddress ?? "",
-      driverId: delivery.driverId ? String(delivery.driverId) : "",
-      notes: delivery.notes ?? "",
-      scheduledAt: delivery.scheduledAt ? new Date(delivery.scheduledAt).toISOString().slice(0, 16) : "",
-    });
-    setOpen(true);
-  };
-
-  const clearForm = () => {
-    setEditingId(null);
-    setFormData(emptyForm);
-  };
-
-  const fillCep = async (type: "origin" | "destination") => {
-    const cep = type === "origin" ? formData.originPostalCode : formData.destinationPostalCode;
-    if (!cep) {
-      toast.error("Informe um CEP");
+  const handleCreateDelivery = async () => {
+    if (!form.clientName.trim()) {
+      toast.error("Preencha o nome do cliente");
       return;
     }
-
-    setLoadingCep(type);
-    try {
-      const result = await lookupCep(cep);
-      if (type === "origin") {
-        setFormData(prev => ({
-          ...prev,
-          originPostalCode: result.cep,
-          originAddress: result.fullAddress,
-        }));
-      } else {
-        setFormData(prev => ({
-          ...prev,
-          destinationPostalCode: result.cep,
-          destinationAddress: result.fullAddress,
-        }));
-      }
-      toast.success("CEP localizado com sucesso");
-    } catch (error: any) {
-      toast.error(error?.message ?? "Erro ao consultar CEP");
-    } finally {
-      setLoadingCep(null);
+    if (!form.destination.street || !form.destination.number || !form.destination.city) {
+      toast.error("Preencha o endereço de destino completo");
+      return;
     }
-  };
-
-  const submitDelivery = async () => {
-    if (!formData.clientName || !formData.originAddress || !formData.destinationAddress) {
-      toast.error("Preencha os campos obrigatórios");
+    if (!form.baseId && (!form.origin.street || !form.origin.number || !form.origin.city)) {
+      toast.error("Preencha a origem ou selecione uma base padrão");
       return;
     }
 
     try {
-      const payload = {
-        clientName: formData.clientName,
-        originPostalCode: formData.originPostalCode || undefined,
-        originAddress: formData.originAddress,
-        destinationPostalCode: formData.destinationPostalCode || undefined,
-        destinationAddress: formData.destinationAddress,
-        driverId: formData.driverId ? Number(formData.driverId) : undefined,
-        scheduledAt: formData.scheduledAt ? new Date(formData.scheduledAt) : undefined,
-        notes: formData.notes || undefined,
-      };
-
-      if (editingId) {
-        await updateMutation.mutateAsync({
-          id: editingId,
-          ...payload,
-        });
-        toast.success("Entrega atualizada com sucesso");
-      } else {
-        await createMutation.mutateAsync(payload);
-        toast.success("Entrega criada com sucesso");
-      }
-
+      await createMutation.mutateAsync({
+        clientId: form.clientId || undefined,
+        clientName: form.clientName,
+        baseId: form.baseId || undefined,
+        driverId: form.driverId === "none" ? undefined : form.driverId,
+        scheduledAt: form.scheduledAt ? new Date(form.scheduledAt) : undefined,
+        notes: form.notes || undefined,
+        originPostalCode: form.origin.postalCode || undefined,
+        originStreet: form.origin.street || undefined,
+        originNumber: form.origin.number || undefined,
+        originNeighborhood: form.origin.neighborhood || undefined,
+        originCity: form.origin.city || undefined,
+        originState: form.origin.state || undefined,
+        originComplement: form.origin.complement || undefined,
+        originReference: form.origin.reference || undefined,
+        originLatitude: form.origin.latitude ? Number(form.origin.latitude) : undefined,
+        originLongitude: form.origin.longitude ? Number(form.origin.longitude) : undefined,
+        originAddress: [
+          form.origin.street,
+          form.origin.number,
+          form.origin.neighborhood,
+          form.origin.city,
+          form.origin.state,
+        ].filter(Boolean).join(" - "),
+        destinationPostalCode: form.destination.postalCode || undefined,
+        destinationStreet: form.destination.street || undefined,
+        destinationNumber: form.destination.number || undefined,
+        destinationNeighborhood: form.destination.neighborhood || undefined,
+        destinationCity: form.destination.city || undefined,
+        destinationState: form.destination.state || undefined,
+        destinationComplement: form.destination.complement || undefined,
+        destinationReference: form.destination.reference || undefined,
+        destinationLatitude: form.destination.latitude ? Number(form.destination.latitude) : undefined,
+        destinationLongitude: form.destination.longitude ? Number(form.destination.longitude) : undefined,
+        destinationAddress: [
+          form.destination.street,
+          form.destination.number,
+          form.destination.neighborhood,
+          form.destination.city,
+          form.destination.state,
+        ].filter(Boolean).join(" - "),
+      });
+      toast.success("Entrega criada com sucesso");
       setOpen(false);
-      clearForm();
-      refetch();
-    } catch {
-      toast.error("Não foi possível salvar a entrega");
-    }
-  };
-
-  const updateDeliveryStatus = async (deliveryId: number, newStatus: string) => {
-    try {
-      await updateMutation.mutateAsync({
-        id: deliveryId,
-        status: newStatus as any,
+      setForm({
+        clientId: "",
+        clientName: "",
+        baseId: "",
+        driverId: "none",
+        scheduledAt: "",
+        notes: "",
+        origin: defaultAddressValue(),
+        destination: defaultAddressValue(),
       });
-      toast.success("Status atualizado");
+      setSelectedIds([]);
       refetch();
     } catch {
-      toast.error("Erro ao atualizar status");
+      toast.error("Erro ao criar entrega");
     }
   };
 
-  const deleteDelivery = async (deliveryId: number) => {
-    if (!confirm("Deseja excluir esta entrega?")) return;
-
-    try {
-      await deleteMutation.mutateAsync(deliveryId);
-      toast.success("Entrega excluída");
-      refetch();
-    } catch {
-      toast.error("Não foi possível excluir a entrega");
-    }
-  };
-
-  const bulkDelete = async () => {
+  const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Excluir ${selectedIds.length} entregas selecionadas?`)) return;
-
-    try {
-      await bulkDeleteMutation.mutateAsync(selectedIds);
-      setSelectedIds([]);
-      toast.success("Entregas excluídas");
-      refetch();
-    } catch {
-      toast.error("Não foi possível excluir as entregas selecionadas");
-    }
+    await bulkDeleteMutation.mutateAsync(selectedIds);
+    toast.success("Entregas excluídas");
+    setSelectedIds([]);
+    refetch();
   };
 
-  const openReschedule = (ids: number[]) => {
-    setRescheduleTarget(ids);
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setRescheduleForm({
-      driverId: "",
-      scheduledAt: tomorrow.toISOString().slice(0, 16),
+  const handleRescheduleSelected = async () => {
+    const nextDate = window.prompt("Nova data (AAAA-MM-DD) para as entregas selecionadas:");
+    if (!nextDate) return;
+
+    const driverId = window.prompt("Motorista (opcional, UUID) para remanejamento:");
+    await bulkRescheduleMutation.mutateAsync({
+      ids: selectedIds,
+      scheduledAt: new Date(`${nextDate}T08:00:00`),
+      driverId: driverId || undefined,
     });
-    setRescheduleOpen(true);
+    toast.success("Entregas remanejadas");
+    setSelectedIds([]);
+    refetch();
   };
 
-  const submitReschedule = async () => {
-    if (!rescheduleTarget || !rescheduleForm.scheduledAt) {
-      toast.error("Informe o novo dia");
-      return;
-    }
-
-    try {
-      await bulkRescheduleMutation.mutateAsync({
-        ids: rescheduleTarget,
-        driverId: rescheduleForm.driverId ? Number(rescheduleForm.driverId) : undefined,
-        scheduledAt: new Date(rescheduleForm.scheduledAt),
-        status: "pendente",
-      });
-      setRescheduleOpen(false);
-      setRescheduleTarget(null);
-      setSelectedIds([]);
-      toast.success("Entregas remanejadas");
-      refetch();
-    } catch {
-      toast.error("Não foi possível remanejar as entregas");
-    }
+  const handleStatusChange = async (deliveryId: string, newStatus: string) => {
+    await updateMutation.mutateAsync({ id: deliveryId, status: newStatus as any });
+    toast.success("Status atualizado");
+    refetch();
   };
 
-  const toggleSelectAll = (checked: boolean) => {
-    setSelectedIds(checked ? visibleDeliveries.map((delivery: any) => delivery.id) : []);
-  };
-
-  const toggleSelected = (deliveryId: number, checked: boolean) => {
-    setSelectedIds(prev =>
-      checked ? [...prev, deliveryId] : prev.filter(id => id !== deliveryId)
-    );
+  const handleDelete = async (deliveryId: string) => {
+    await deleteMutation.mutateAsync(deliveryId);
+    toast.success("Entrega excluída");
+    refetch();
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Entregas</h1>
-          <p className="text-muted-foreground mt-1">
-            Cadastro, revisão, remanejamento e acompanhamento operacional
-          </p>
+          <h1 className="text-3xl font-bold">Entregas</h1>
+          <p className="text-muted-foreground">Cadastro, revisão, remanejamento e acompanhamento operacional.</p>
         </div>
-
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={openCreate}>
-              <Plus className="w-4 h-4" />
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
               Nova Entrega
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-5xl">
             <DialogHeader>
-              <DialogTitle>{editingId ? "Editar Entrega" : "Criar Nova Entrega"}</DialogTitle>
-              <DialogDescription>
-                Informe os dados da coleta e da entrega. O CEP pode preencher o endereço automaticamente.
-              </DialogDescription>
+              <DialogTitle>Criar nova entrega</DialogTitle>
+              <DialogDescription>Selecione cliente, base e preencha os endereços de coleta/destino.</DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2 md:col-span-2">
                 <Label>Cliente *</Label>
-                <Input
-                  placeholder="Ex: João Silva"
-                  value={formData.clientName}
-                  onChange={e => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>CEP de origem</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="00000-000"
-                    value={formData.originPostalCode}
-                    onChange={e => setFormData(prev => ({ ...prev, originPostalCode: e.target.value }))}
-                  />
-                  <Button type="button" variant="outline" onClick={() => fillCep("origin")} disabled={loadingCep === "origin"}>
-                    Consultar
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>CEP de destino</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="00000-000"
-                    value={formData.destinationPostalCode}
-                    onChange={e => setFormData(prev => ({ ...prev, destinationPostalCode: e.target.value }))}
-                  />
-                  <Button type="button" variant="outline" onClick={() => fillCep("destination")} disabled={loadingCep === "destination"}>
-                    Consultar
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Endereço de origem *</Label>
-                <Input
-                  placeholder="Rua, número, bairro"
-                  value={formData.originAddress}
-                  onChange={e => setFormData(prev => ({ ...prev, originAddress: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Endereço de destino *</Label>
-                <Input
-                  placeholder="Rua, número, bairro"
-                  value={formData.destinationAddress}
-                  onChange={e => setFormData(prev => ({ ...prev, destinationAddress: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Motorista</Label>
-                <Select value={formData.driverId || "unassigned"} onValueChange={value => setFormData(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um motorista" />
-                  </SelectTrigger>
+                <Select value={form.clientId} onValueChange={value => setForm({ ...form, clientId: value, baseId: "" })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione um cliente" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="unassigned">Sem motorista</SelectItem>
-                    {drivers.map((driver: any) => (
-                      <SelectItem key={driver.id} value={String(driver.id)}>
-                        {driver.name}
-                      </SelectItem>
+                    {clients.map((client: any) => (
+                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Nome do cliente</Label>
+                <Input value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} placeholder="Nome usado na entrega" />
+              </div>
+              <div className="space-y-2">
+                <Label>Base padrão</Label>
+                <Select value={form.baseId} onValueChange={value => syncBaseAddress(value)}>
+                  <SelectTrigger><SelectValue placeholder="Selecione uma base" /></SelectTrigger>
+                  <SelectContent>
+                    {bases.map((base: any) => (
+                      <SelectItem key={base.id} value={base.id}>{base.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Motorista</Label>
+                  <Select value={form.driverId} onValueChange={value => setForm({ ...form, driverId: value })}>
+                  <SelectTrigger><SelectValue placeholder="Sem motorista" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem motorista</SelectItem>
+                    {drivers.map((driver: any) => (
+                      <SelectItem key={driver.id} value={driver.id}>{driver.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2">
                 <Label>Data/Hora Agendada</Label>
-                <Input
-                  type="datetime-local"
-                  value={formData.scheduledAt}
-                  onChange={e => setFormData(prev => ({ ...prev, scheduledAt: e.target.value }))}
-                />
+                <Input type="datetime-local" value={form.scheduledAt} onChange={e => setForm({ ...form, scheduledAt: e.target.value })} />
               </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <Label>Observações</Label>
-                <Textarea
-                  placeholder="Observações adicionais..."
-                  value={formData.notes}
-                  onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                />
-              </div>
-
-              <Button onClick={submitDelivery} className="md:col-span-2">
-                {editingId ? "Salvar alterações" : "Criar Entrega"}
-              </Button>
             </div>
+
+            <AddressFields title="Endereço de origem" value={form.origin} onChange={origin => setForm({ ...form, origin })} />
+            <AddressFields title="Endereço de destino" value={form.destination} onChange={destination => setForm({ ...form, destination })} />
+
+            <div className="space-y-2">
+              <Label>Observações</Label>
+              <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+            </div>
+
+            <Button onClick={handleCreateDelivery}>Criar entrega</Button>
           </DialogContent>
         </Dialog>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Em andamento</p>
-            <p className="text-2xl font-semibold">{openDeliveries.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Selecionadas</p>
-            <p className="text-2xl font-semibold">{selectedIds.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Rota em revisão</p>
-            <p className="text-2xl font-semibold">{visibleDeliveries.filter((d: any) => d.routeOrder != null).length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Entregues</p>
-            <p className="text-2xl font-semibold">
-              {visibleDeliveries.filter((d: any) => d.status === "entregue").length}
-            </p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Em andamento</p><p className="text-3xl font-bold">{deliveries.filter((d: any) => d.status === "em_rota").length}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Selecionadas</p><p className="text-3xl font-bold">{selectedCount}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Rota em revisão</p><p className="text-3xl font-bold">{deliveries.filter((d: any) => d.routeOrder != null).length}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Entregues</p><p className="text-3xl font-bold">{deliveries.filter((d: any) => d.status === "entregue").length}</p></CardContent></Card>
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 lg:grid-cols-4">
-            <div className="flex-1 relative lg:col-span-2">
-              <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por cliente, CEP ou endereço..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-10" placeholder="Buscar por cliente, CEP ou endereço..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filtrar por status" />
+              <SelectTrigger className="w-full lg:w-48">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DELIVERY_STATUSES.map(status => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="pendente">Pendente</SelectItem>
+                <SelectItem value="em_rota">Em rota</SelectItem>
+                <SelectItem value="entregue">Entregue</SelectItem>
+                <SelectItem value="cancelado">Cancelado</SelectItem>
               </SelectContent>
             </Select>
+            <Button variant="outline" onClick={handleRescheduleSelected} disabled={selectedIds.length === 0} className="gap-2">
+              <Calendar className="h-4 w-4" />
+              Remanejar
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteSelected} disabled={selectedIds.length === 0} className="gap-2">
+              <Trash2 className="h-4 w-4" />
+              Excluir em lote
+            </Button>
           </div>
         </CardContent>
       </Card>
-
-      {selectedIds.length > 0 ? (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <ShieldAlert className="h-4 w-4 text-primary" />
-                {selectedIds.length} entregas selecionadas
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => openReschedule(selectedIds)}>
-                  Remanejar selecionadas
-                </Button>
-                <Button variant="destructive" onClick={bulkDelete}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Excluir em lote
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Entregas</CardTitle>
-          <CardDescription>
-            {visibleDeliveries.length} entregas encontradas. A ordenação considera a ordem manual e, depois, a data.
-          </CardDescription>
+          <CardTitle>Lista de entregas</CardTitle>
+          <CardDescription>{filteredDeliveries.length} entregas encontradas. A ordenação considera ordem manual e depois data.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="w-10 py-3 px-4">
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="py-3 text-left"><Checkbox checked={selectedIds.length === filteredDeliveries.length && filteredDeliveries.length > 0} onCheckedChange={checked => setSelectedIds(checked ? filteredDeliveries.map((delivery: any) => delivery.id) : [])} /></th>
+                <th className="py-3 text-left">Cliente</th>
+                <th className="py-3 text-left">Destino</th>
+                <th className="py-3 text-left">Status</th>
+                <th className="py-3 text-left">Agenda</th>
+                <th className="py-3 text-left">Motorista</th>
+                <th className="py-3 text-left">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDeliveries.length === 0 ? (
+                <tr><td colSpan={7} className="py-10 text-center text-muted-foreground">Nenhuma entrega encontrada</td></tr>
+              ) : filteredDeliveries.map((delivery: any) => (
+                <tr key={delivery.id} className="border-b">
+                  <td className="py-3">
                     <Checkbox
-                      checked={visibleDeliveries.length > 0 && selectedIds.length === visibleDeliveries.length}
-                      onCheckedChange={value => toggleSelectAll(Boolean(value))}
+                      checked={selectedIds.includes(delivery.id)}
+                      onCheckedChange={checked => {
+                        setSelectedIds(current => checked ? [...current, delivery.id] : current.filter(id => id !== delivery.id));
+                      }}
                     />
-                  </th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Cliente</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Destino</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Status</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Agenda</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Ações</th>
+                  </td>
+                  <td className="py-3 font-medium">{delivery.clientName}</td>
+                  <td className="py-3 text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      {delivery.destinationAddress}
+                    </div>
+                  </td>
+                  <td className="py-3">
+                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[delivery.status] || "bg-gray-100 text-gray-800"}`}>
+                      {STATUS_LABELS[delivery.status] || delivery.status}
+                    </span>
+                  </td>
+                  <td className="py-3">{delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "-"}</td>
+                  <td className="py-3">{drivers.find((driver: any) => driver.id === delivery.driverId)?.name || "Sem motorista"}</td>
+                  <td className="py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Select value={delivery.status} onValueChange={value => handleStatusChange(delivery.id, value)}>
+                        <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pendente">Pendente</SelectItem>
+                          <SelectItem value="em_rota">Em rota</SelectItem>
+                          <SelectItem value="entregue">Entregue</SelectItem>
+                          <SelectItem value="cancelado">Cancelado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <OpenGpsButton
+                        address={delivery.destinationAddress}
+                        latitude={delivery.destinationLatitude}
+                        longitude={delivery.destinationLongitude}
+                        label="GPS"
+                      />
+                      <Button variant="outline" size="sm" onClick={() => handleDelete(delivery.id)}>
+                        Excluir
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {visibleDeliveries.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-10 text-center text-muted-foreground">
-                      Nenhuma entrega encontrada
-                    </td>
-                  </tr>
-                ) : (
-                  visibleDeliveries.map((delivery: any) => {
-                    const isSelected = selectedIds.includes(delivery.id);
-                    const canReschedule = delivery.status !== "entregue" && delivery.status !== "cancelado";
-
-                    return (
-                      <tr key={delivery.id} className="border-b border-border hover:bg-muted/50">
-                        <td className="py-3 px-4">
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={value => toggleSelected(delivery.id, Boolean(value))}
-                          />
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="font-medium">{delivery.clientName}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {delivery.originPostalCode || "-"}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-start gap-2 text-muted-foreground">
-                            <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                            <div>
-                              <div className="font-medium text-foreground">{delivery.destinationAddress}</div>
-                              <div className="text-xs">{delivery.destinationPostalCode || "-"}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <Select value={delivery.status} onValueChange={value => updateDeliveryStatus(delivery.id, value)}>
-                            <SelectTrigger className="w-44">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {DELIVERY_STATUSES.filter(status => status.value !== "all").map(status => (
-                                <SelectItem key={status.value} value={status.value}>
-                                  {status.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[delivery.status] || "bg-gray-100 text-gray-800"}`}>
-                            {DELIVERY_STATUSES.find(s => s.value === delivery.status)?.label ?? delivery.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-muted-foreground">
-                          <div>{delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "Sem agendamento"}</div>
-                          <div className="text-xs">Ordem: {delivery.routeOrder ?? "automática"}</div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => openEdit(delivery)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Editar
-                            </Button>
-                            {canReschedule ? (
-                              <Button variant="ghost" size="sm" onClick={() => openReschedule([delivery.id])}>
-                                <Calendar className="mr-2 h-4 w-4" />
-                                Remanejar
-                              </Button>
-                            ) : null}
-                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => deleteDelivery(delivery.id)}>
-                              Excluir
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </CardContent>
       </Card>
-
-      <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remanejar entregas</DialogTitle>
-            <DialogDescription>
-              Reagende para o dia seguinte ou para a data desejada e escolha o motorista.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Motorista</Label>
-              <Select value={rescheduleForm.driverId || "unassigned"} onValueChange={value => setRescheduleForm(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um motorista" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Manter motorista atual</SelectItem>
-                  {drivers.map((driver: any) => (
-                    <SelectItem key={driver.id} value={String(driver.id)}>
-                      {driver.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Nova data</Label>
-              <Input
-                type="datetime-local"
-                value={rescheduleForm.scheduledAt}
-                onChange={e => setRescheduleForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
-              />
-            </div>
-            <Button onClick={submitReschedule} className="w-full">
-              Confirmar remanejamento
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

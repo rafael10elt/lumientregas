@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Package2, Truck, TrendingUp, Clock } from "lucide-react";
+import { Package2, Truck, TrendingUp, Clock, Building2, UserRound } from "lucide-react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 
@@ -91,12 +91,28 @@ export default function Dashboard() {
               <span>Gerenciar Entregas</span>
             </Button>
             <Button
+              onClick={() => navigate("/clients")}
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center justify-center gap-2"
+            >
+              <Building2 className="w-6 h-6" />
+              <span>Clientes e Bases</span>
+            </Button>
+            <Button
               onClick={() => navigate("/routes")}
               variant="outline"
               className="h-auto py-4 flex flex-col items-center justify-center gap-2"
             >
               <Truck className="w-6 h-6" />
               <span>Visualizar Rotas</span>
+            </Button>
+            <Button
+              onClick={() => navigate("/driver")}
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center justify-center gap-2"
+            >
+              <UserRound className="w-6 h-6" />
+              <span>Painel do Motorista</span>
             </Button>
             <Button
               onClick={() => navigate("/analytics")}

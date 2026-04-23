@@ -1,11 +1,59 @@
-export type UserRole = "user" | "admin";
+export type UserRole = "superadmin" | "admin" | "motorista";
 export type DriverStatus = "available" | "busy" | "offline";
 export type DeliveryStatus = "pendente" | "em_rota" | "entregue" | "cancelado";
+export type TenantStatus = "active" | "suspended";
+export type TenantPaymentStatus = "ok" | "pending" | "overdue";
+
+export type AddressFields = {
+  postalCode: string | null;
+  street: string | null;
+  number: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
+  complement: string | null;
+  reference: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type Tenant = {
+  id: string;
+  name: string;
+  slug: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  status: TenantStatus;
+  paymentStatus: TenantPaymentStatus;
+  paymentDueAt: Date | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type InsertTenant = {
+  name: string;
+  slug: string;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  status?: TenantStatus;
+  paymentStatus?: TenantPaymentStatus;
+  paymentDueAt?: Date | string | null;
+  notes?: string | null;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
 
 export type User = {
   id: string;
   openId: string;
   authUserId: string | null;
+  tenantId: string | null;
+  tenantName: string | null;
+  tenantStatus: TenantStatus | null;
+  tenantPaymentStatus: TenantPaymentStatus | null;
   name: string | null;
   email: string | null;
   loginMethod: string | null;
@@ -18,6 +66,7 @@ export type User = {
 export type InsertUser = {
   openId: string;
   authUserId?: string | null;
+  tenantId?: string | null;
   name?: string | null;
   email?: string | null;
   loginMethod?: string | null;
@@ -29,18 +78,32 @@ export type InsertUser = {
 
 export type Driver = {
   id: string;
+  tenantId: string;
+  userId: string | null;
   name: string;
   email: string | null;
   phone: string | null;
-  vehicle: string | null;
   status: DriverStatus;
-  vehicles?: DriverVehicle[];
+  notes: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
 
+export type InsertDriver = {
+  tenantId: string;
+  userId?: string | null;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  status?: DriverStatus;
+  notes?: string | null;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
+
 export type DriverVehicle = {
   id: string;
+  tenantId: string;
   driverId: string;
   model: string;
   plate: string;
@@ -51,6 +114,7 @@ export type DriverVehicle = {
 };
 
 export type InsertDriverVehicle = {
+  tenantId: string;
   driverId: string;
   model: string;
   plate: string;
@@ -62,20 +126,22 @@ export type InsertDriverVehicle = {
 
 export type Client = {
   id: string;
+  tenantId: string;
   name: string;
   document: string | null;
-  phone: string | null;
   email: string | null;
+  phone: string | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
 
 export type InsertClient = {
+  tenantId: string;
   name: string;
   document?: string | null;
-  phone?: string | null;
   email?: string | null;
+  phone?: string | null;
   notes?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
@@ -83,116 +149,100 @@ export type InsertClient = {
 
 export type ClientBase = {
   id: string;
+  tenantId: string;
   clientId: string;
   name: string;
-  postalCode: string | null;
-  street: string;
-  number: string | null;
-  neighborhood: string | null;
-  city: string;
-  state: string;
-  complement: string | null;
-  reference: string | null;
   isDefault: boolean;
+} & AddressFields & {
   createdAt: Date;
   updatedAt: Date;
 };
 
 export type InsertClientBase = {
+  tenantId: string;
   clientId: string;
   name: string;
-  postalCode?: string | null;
-  street: string;
-  number?: string | null;
-  neighborhood?: string | null;
-  city: string;
-  state: string;
-  complement?: string | null;
-  reference?: string | null;
   isDefault?: boolean;
-  createdAt?: Date | string;
-  updatedAt?: Date | string;
-};
-
-export type InsertDriver = {
-  name: string;
-  email?: string | null;
-  phone?: string | null;
-  vehicle?: string | null;
-  status?: DriverStatus;
+} & Partial<AddressFields> & {
   createdAt?: Date | string;
   updatedAt?: Date | string;
 };
 
 export type Delivery = {
   id: string;
+  tenantId: string;
   clientId: string | null;
-  baseId: string | null;
   clientName: string;
+  baseId: string | null;
   originPostalCode: string | null;
-  originAddress: string;
   originStreet: string | null;
   originNumber: string | null;
   originNeighborhood: string | null;
   originCity: string | null;
   originState: string | null;
   originComplement: string | null;
-  originLat: string | null;
-  originLng: string | null;
+  originReference: string | null;
+  originLatitude: number | null;
+  originLongitude: number | null;
+  originAddress: string;
   destinationPostalCode: string | null;
-  destinationAddress: string;
   destinationStreet: string | null;
   destinationNumber: string | null;
   destinationNeighborhood: string | null;
   destinationCity: string | null;
   destinationState: string | null;
   destinationComplement: string | null;
-  destinationLat: string | null;
-  destinationLng: string | null;
+  destinationReference: string | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
+  destinationAddress: string;
   driverId: string | null;
   createdByUserId: string | null;
   status: DeliveryStatus;
-  routeOrder: number | null;
   scheduledAt: Date | null;
   notes: string | null;
   distance: string | null;
   estimatedTime: string | null;
+  routeOrder: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
 
 export type InsertDelivery = {
+  tenantId: string;
   clientId?: string | null;
-  baseId?: string | null;
   clientName: string;
+  baseId?: string | null;
   originPostalCode?: string | null;
-  originAddress: string;
   originStreet?: string | null;
   originNumber?: string | null;
   originNeighborhood?: string | null;
   originCity?: string | null;
   originState?: string | null;
   originComplement?: string | null;
-  originLat?: string | null;
-  originLng?: string | null;
+  originReference?: string | null;
+  originLatitude?: number | null;
+  originLongitude?: number | null;
+  originAddress: string;
   destinationPostalCode?: string | null;
-  destinationAddress: string;
   destinationStreet?: string | null;
   destinationNumber?: string | null;
   destinationNeighborhood?: string | null;
   destinationCity?: string | null;
   destinationState?: string | null;
   destinationComplement?: string | null;
-  destinationLat?: string | null;
-  destinationLng?: string | null;
+  destinationReference?: string | null;
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
+  destinationAddress: string;
   driverId?: string | null;
   createdByUserId?: string | null;
   status?: DeliveryStatus;
-  routeOrder?: number | null;
   scheduledAt?: Date | string | null;
   notes?: string | null;
   distance?: string | null;
   estimatedTime?: string | null;
+  routeOrder?: number | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
 };

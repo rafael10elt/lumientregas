@@ -19,29 +19,58 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Package2, Truck, TrendingUp, UserCog, CarFront } from "lucide-react";
+import {
+  Building2,
+  LayoutDashboard,
+  LogOut,
+  Package2,
+  PanelLeft,
+  ShieldCheck,
+  TrendingUp,
+  Truck,
+  UserCog,
+  UserRound,
+} from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
+import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
-import { BrandMark } from "./BrandMark";
-import { PwaInstallButton } from "./PwaInstallButton";
-
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: Package2, label: "Entregas", path: "/deliveries" },
-  { icon: CarFront, label: "Motoristas", path: "/drivers" },
-  { icon: UserCog, label: "Usuários", path: "/users" },
-  { icon: Truck, label: "Rotas", path: "/routes" },
-  { icon: Users, label: "Painel Motorista", path: "/driver" },
-  { icon: TrendingUp, label: "Analytics", path: "/analytics" },
-];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 480;
+
+function getMenuItems(role?: string | null) {
+  if (role === "superadmin") {
+    return [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+      { icon: ShieldCheck, label: "SaaS", path: "/saas" },
+      { icon: Package2, label: "Entregas", path: "/deliveries" },
+      { icon: Truck, label: "Motoristas", path: "/drivers" },
+      { icon: Building2, label: "Clientes", path: "/clients" },
+      { icon: UserCog, label: "Usuários", path: "/users" },
+      { icon: Truck, label: "Rotas", path: "/routes" },
+      { icon: TrendingUp, label: "Analytics", path: "/analytics" },
+    ];
+  }
+
+  if (role === "admin") {
+    return [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+      { icon: Package2, label: "Entregas", path: "/deliveries" },
+      { icon: Truck, label: "Motoristas", path: "/drivers" },
+      { icon: Building2, label: "Clientes", path: "/clients" },
+      { icon: UserCog, label: "Usuários", path: "/users" },
+      { icon: Truck, label: "Rotas", path: "/routes" },
+      { icon: TrendingUp, label: "Analytics", path: "/analytics" },
+    ];
+  }
+
+  return [{ icon: UserRound, label: "Painel Motorista", path: "/driver" }];
+}
 
 export default function DashboardLayout({
   children,
@@ -59,7 +88,7 @@ export default function DashboardLayout({
   }, [sidebarWidth]);
 
   if (loading) {
-    return <DashboardLayoutSkeleton />
+    return <DashboardLayoutSkeleton />;
   }
 
   if (!user) {
@@ -76,7 +105,7 @@ export default function DashboardLayout({
           </div>
           <Button
             onClick={() => {
-              window.location.href = "/login";
+              window.location.href = getLoginUrl();
             }}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"
@@ -118,6 +147,7 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const menuItems = getMenuItems(user?.role);
   const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
 
@@ -175,7 +205,14 @@ function DashboardLayoutContent({
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed ? (
-                <BrandMark size="sm" className="min-w-0" />
+                <div className="flex flex-col min-w-0">
+                  <span className="font-semibold tracking-tight truncate">
+                    Lumi Entregas
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate">
+                    {user?.tenantName || user?.role || "Conta"}
+                  </span>
+                </div>
               ) : null}
             </div>
           </SidebarHeader>
@@ -190,11 +227,9 @@ function DashboardLayoutContent({
                       isActive={isActive}
                       onClick={() => setLocation(item.path)}
                       tooltip={item.label}
-                      className={`h-10 transition-all font-normal`}
+                      className="h-10 transition-all font-normal"
                     >
-                      <item.icon
-                        className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
-                      />
+                      <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -203,10 +238,7 @@ function DashboardLayoutContent({
             </SidebarMenu>
           </SidebarContent>
 
-        <SidebarFooter className="p-3">
-            <div className="mb-3">
-              <PwaInstallButton fullWidth size="sm" />
-            </div>
+          <SidebarFooter className="p-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -226,6 +258,12 @@ function DashboardLayoutContent({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
+                {user?.role === "superadmin" ? (
+                  <DropdownMenuItem onClick={() => setLocation("/saas")}>
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    <span>SaaS</span>
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem
                   onClick={logout}
                   className="cursor-pointer text-destructive focus:text-destructive"

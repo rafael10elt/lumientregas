@@ -1,150 +1,142 @@
-export type GeoPoint = {
-  lat: number;
-  lng: number;
-  label?: string;
+export type RouteStop = {
+  id: string;
+  label: string;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  order?: number | null;
 };
 
-const geoCache = new Map<string, GeoPoint | null>();
+export type OptimizedStop = RouteStop & {
+  sequence: number;
+  distanceFromPreviousMeters: number | null;
+};
 
-function normalizeQuery(value: string) {
-  return value.trim().replace(/\s+/g, " ");
+type NominatimResult = {
+  lat: string;
+  lon: string;
+};
+
+function haversineDistanceMeters(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number }
+) {
+  const earthRadiusMeters = 6371000;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+
+  const deltaLat = toRadians(b.latitude - a.latitude);
+  const deltaLng = toRadians(b.longitude - a.longitude);
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+
+  const sinLat = Math.sin(deltaLat / 2);
+  const sinLng = Math.sin(deltaLng / 2);
+  const aa = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+
+  return 2 * earthRadiusMeters * Math.asin(Math.min(1, Math.sqrt(aa)));
 }
 
-export async function geocodeAddress(address: string): Promise<GeoPoint | null> {
-  const normalized = normalizeQuery(address);
-  if (!normalized) return null;
-
-  const cached = geoCache.get(normalized);
-  if (cached !== undefined) {
-    return cached;
-  }
+async function geocodeAddress(address: string) {
+  if (!address.trim()) return null;
 
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("limit", "1");
-  url.searchParams.set("q", `${normalized}, Brasil`);
+  url.searchParams.set("q", address);
 
   const response = await fetch(url, {
     headers: {
-      "User-Agent": "LumiEntregas/1.0 (route-planner)",
+      "User-Agent": "LumiEntregas/1.0",
       Accept: "application/json",
     },
   });
 
-  if (!response.ok) {
-    geoCache.set(normalized, null);
-    return null;
-  }
+  if (!response.ok) return null;
 
-  const data = (await response.json()) as Array<{
-    lat: string;
-    lon: string;
-    display_name?: string;
-  }>;
+  const data = (await response.json()) as NominatimResult[];
+  const first = data[0];
+  if (!first) return null;
 
-  if (!data[0]) {
-    geoCache.set(normalized, null);
-    return null;
-  }
+  const latitude = Number(first.lat);
+  const longitude = Number(first.lon);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
 
-  const point = {
-    lat: Number(data[0].lat),
-    lng: Number(data[0].lon),
-    label: data[0].display_name,
-  };
-
-  geoCache.set(normalized, point);
-  return point;
+  return { latitude, longitude };
 }
 
-export function haversineKm(a: GeoPoint, b: GeoPoint) {
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const earthRadius = 6371;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
-
-  const h =
-    sinLat * sinLat +
-    Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
-
-  return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-export async function optimizeByProximity<T extends { id: number; address: string }>(
-  baseAddress: string,
-  stops: T[]
+export async function optimizeRouteByProximity(
+  stops: RouteStop[],
+  origin?: { latitude: number; longitude: number } | null
 ) {
-  const base = await geocodeAddress(baseAddress);
-  if (!base) {
-    return stops.map((stop, index) => ({
-      ...stop,
-      routeOrder: index + 1,
-      distanceFromPreviousKm: null as number | null,
-      coordinates: null as GeoPoint | null,
-    }));
-  }
-
   const enriched = await Promise.all(
     stops.map(async stop => ({
-      stop,
-      coordinates: await geocodeAddress(stop.address),
+      ...stop,
+      geocoded: stop.latitude != null && stop.longitude != null
+        ? { latitude: stop.latitude, longitude: stop.longitude }
+        : await geocodeAddress(stop.address),
     }))
   );
 
-  const pending = enriched.filter(item => item.coordinates);
-  const remaining = new Set(pending.map(item => item.stop.id));
-  const route: Array<{
-    id: number;
-    routeOrder: number;
-    distanceFromPreviousKm: number | null;
-    coordinates: GeoPoint | null;
-  }> = [];
+  const remaining = enriched.filter(item => item.geocoded);
+  const ordered: OptimizedStop[] = [];
+  let cursor = origin ?? null;
+  let sequence = 1;
 
-  let currentPoint = base;
-  let order = 1;
+  while (remaining.length > 0) {
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
 
-  while (remaining.size > 0) {
-    let nextCandidate: (typeof pending)[number] | null = null;
-    let nextDistance = Number.POSITIVE_INFINITY;
-
-    for (const item of pending) {
-      if (!remaining.has(item.stop.id) || !item.coordinates) continue;
-      const distance = haversineKm(currentPoint, item.coordinates);
-      if (distance < nextDistance) {
-        nextDistance = distance;
-        nextCandidate = item;
+    remaining.forEach((candidate, index) => {
+      const distance = cursor
+        ? haversineDistanceMeters(cursor, candidate.geocoded!)
+        : index;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
       }
-    }
-
-    if (!nextCandidate || !nextCandidate.coordinates) {
-      break;
-    }
-
-    route.push({
-      id: nextCandidate.stop.id,
-      routeOrder: order,
-      distanceFromPreviousKm: Number(nextDistance.toFixed(2)),
-      coordinates: nextCandidate.coordinates,
     });
-    remaining.delete(nextCandidate.stop.id);
-    currentPoint = nextCandidate.coordinates;
-    order += 1;
+
+    const [picked] = remaining.splice(bestIndex, 1);
+    ordered.push({
+      ...picked,
+      latitude: picked.geocoded!.latitude,
+      longitude: picked.geocoded!.longitude,
+      sequence,
+      distanceFromPreviousMeters: Number.isFinite(bestDistance) ? bestDistance : null,
+    });
+    cursor = picked.geocoded!;
+    sequence += 1;
   }
 
-  const leftovers = stops.filter(stop => !route.some(entry => entry.id === stop.id));
-  leftovers.forEach(stop => {
-    route.push({
-      id: stop.id,
-      routeOrder: order,
-      distanceFromPreviousKm: null,
-      coordinates: null,
+  const unresolved = enriched.filter(item => !item.geocoded);
+  for (const stop of unresolved) {
+    ordered.push({
+      ...stop,
+      sequence,
+      distanceFromPreviousMeters: null,
     });
-    order += 1;
-  });
+    sequence += 1;
+  }
 
-  return route;
+  return ordered;
+}
+
+export async function geocodePostalCode(postalCode: string) {
+  const clean = postalCode.replace(/\D/g, "");
+  if (clean.length !== 8) return null;
+
+  const response = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  if (data.erro) return null;
+
+  return {
+    postalCode: clean,
+    street: data.logradouro ?? "",
+    neighborhood: data.bairro ?? "",
+    city: data.localidade ?? "",
+    state: data.uf ?? "",
+    complement: data.complemento ?? "",
+  };
 }

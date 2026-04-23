@@ -11,7 +11,6 @@ export const ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   supabaseProjectId,
   supabaseUrl: process.env.SUPABASE_URL ?? (supabaseProjectId ? `https://${supabaseProjectId}.supabase.co` : ""),
-  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
   supabaseServiceRoleKey:
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_ROLE ?? "",
 };
