@@ -3,7 +3,7 @@ export type DriverStatus = "available" | "busy" | "offline";
 export type DeliveryStatus = "pendente" | "em_rota" | "entregue" | "cancelado";
 
 export type User = {
-  id: number;
+  id: string;
   openId: string;
   authUserId: string | null;
   name: string | null;
@@ -28,7 +28,7 @@ export type InsertUser = {
 };
 
 export type Driver = {
-  id: number;
+  id: string;
   name: string;
   email: string | null;
   phone: string | null;
@@ -40,8 +40,8 @@ export type Driver = {
 };
 
 export type DriverVehicle = {
-  id: number;
-  driverId: number;
+  id: string;
+  driverId: string;
   model: string;
   plate: string;
   nickname: string | null;
@@ -51,11 +51,65 @@ export type DriverVehicle = {
 };
 
 export type InsertDriverVehicle = {
-  driverId: number;
+  driverId: string;
   model: string;
   plate: string;
   nickname?: string | null;
   isPrimary?: boolean;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
+
+export type Client = {
+  id: string;
+  name: string;
+  document: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type InsertClient = {
+  name: string;
+  document?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
+
+export type ClientBase = {
+  id: string;
+  clientId: string;
+  name: string;
+  postalCode: string | null;
+  street: string;
+  number: string | null;
+  neighborhood: string | null;
+  city: string;
+  state: string;
+  complement: string | null;
+  reference: string | null;
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type InsertClientBase = {
+  clientId: string;
+  name: string;
+  postalCode?: string | null;
+  street: string;
+  number?: string | null;
+  neighborhood?: string | null;
+  city: string;
+  state: string;
+  complement?: string | null;
+  reference?: string | null;
+  isDefault?: boolean;
   createdAt?: Date | string;
   updatedAt?: Date | string;
 };
@@ -71,18 +125,32 @@ export type InsertDriver = {
 };
 
 export type Delivery = {
-  id: number;
+  id: string;
+  clientId: string | null;
+  baseId: string | null;
   clientName: string;
   originPostalCode: string | null;
   originAddress: string;
+  originStreet: string | null;
+  originNumber: string | null;
+  originNeighborhood: string | null;
+  originCity: string | null;
+  originState: string | null;
+  originComplement: string | null;
   originLat: string | null;
   originLng: string | null;
   destinationPostalCode: string | null;
   destinationAddress: string;
+  destinationStreet: string | null;
+  destinationNumber: string | null;
+  destinationNeighborhood: string | null;
+  destinationCity: string | null;
+  destinationState: string | null;
+  destinationComplement: string | null;
   destinationLat: string | null;
   destinationLng: string | null;
-  driverId: number | null;
-  createdByUserId: number | null;
+  driverId: string | null;
+  createdByUserId: string | null;
   status: DeliveryStatus;
   routeOrder: number | null;
   scheduledAt: Date | null;
@@ -94,17 +162,31 @@ export type Delivery = {
 };
 
 export type InsertDelivery = {
+  clientId?: string | null;
+  baseId?: string | null;
   clientName: string;
   originPostalCode?: string | null;
   originAddress: string;
+  originStreet?: string | null;
+  originNumber?: string | null;
+  originNeighborhood?: string | null;
+  originCity?: string | null;
+  originState?: string | null;
+  originComplement?: string | null;
   originLat?: string | null;
   originLng?: string | null;
   destinationPostalCode?: string | null;
   destinationAddress: string;
+  destinationStreet?: string | null;
+  destinationNumber?: string | null;
+  destinationNeighborhood?: string | null;
+  destinationCity?: string | null;
+  destinationState?: string | null;
+  destinationComplement?: string | null;
   destinationLat?: string | null;
   destinationLng?: string | null;
-  driverId?: number | null;
-  createdByUserId?: number | null;
+  driverId?: string | null;
+  createdByUserId?: string | null;
   status?: DeliveryStatus;
   routeOrder?: number | null;
   scheduledAt?: Date | string | null;
