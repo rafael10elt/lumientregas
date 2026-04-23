@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RESET_PASSWORD_PATH } from "@/const";
+import { BrandMark } from "@/components/BrandMark";
 import { supabase } from "@/lib/supabase";
-import { Package2, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -83,9 +84,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="bg-card rounded-lg shadow-lg p-8 text-center">
           <div className="flex justify-center mb-6">
-            <div className="bg-primary/20 p-4 rounded-full">
-              <Package2 className="w-12 h-12 text-primary" />
-            </div>
+            <BrandMark size="lg" showText={false} />
           </div>
 
           <h1 className="text-3xl font-bold text-foreground mb-2">
