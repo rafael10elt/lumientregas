@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatPhone, formatPlate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { Pencil, Plus, Trash2, Truck } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -33,9 +34,9 @@ const STATUS_LABELS: Record<DriverForm["status"], string> = {
 
 export default function Drivers() {
   const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<DriverForm>(emptyForm);
-  const [selectedDriverId, setSelectedDriverId] = useState<number | null>(null);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   const [vehicleForm, setVehicleForm] = useState({
     model: "",
     plate: "",
@@ -130,7 +131,7 @@ export default function Drivers() {
     }
   };
 
-  const removeVehicle = async (vehicleId: number) => {
+  const removeVehicle = async (vehicleId: string) => {
     if (!confirm("Deseja excluir este veículo?")) return;
 
     try {
@@ -142,7 +143,7 @@ export default function Drivers() {
     }
   };
 
-  const removeDriver = async (id: number) => {
+  const removeDriver = async (id: string) => {
     if (!confirm("Deseja excluir este motorista?")) return;
 
     try {
@@ -186,11 +187,27 @@ export default function Drivers() {
               </div>
               <div className="space-y-2">
                 <Label>E-mail</Label>
-                <Input value={formData.email} onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                <Input
+                  type="email"
+                  value={formData.email}
+                  onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  autoComplete="email"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Telefone</Label>
-                <Input value={formData.phone} onChange={e => setFormData(prev => ({ ...prev, phone: e.target.value }))} />
+                <Input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={e =>
+                    setFormData(prev => ({
+                      ...prev,
+                      phone: formatPhone(e.target.value),
+                    }))
+                  }
+                  inputMode="tel"
+                  autoComplete="tel"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Veículo</Label>
@@ -327,7 +344,7 @@ export default function Drivers() {
               <Label>Motorista</Label>
               <Select
                 value={selectedDriverId ? String(selectedDriverId) : ""}
-                onValueChange={value => setSelectedDriverId(Number(value))}
+                onValueChange={value => setSelectedDriverId(value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um motorista" />
@@ -353,7 +370,9 @@ export default function Drivers() {
               <Label>Placa</Label>
               <Input
                 value={vehicleForm.plate}
-                onChange={e => setVehicleForm(prev => ({ ...prev, plate: e.target.value }))}
+                onChange={e =>
+                  setVehicleForm(prev => ({ ...prev, plate: formatPlate(e.target.value) }))
+                }
                 placeholder="ABC1D23"
               />
             </div>

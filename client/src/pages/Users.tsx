@@ -37,7 +37,7 @@ const ROLE_LABELS: Record<Role, string> = {
 export default function Users() {
   const { user, tenant } = useAuth();
   const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<UserForm>(emptyForm);
 
   const { data: users = [], refetch } = trpc.users.list.useQuery();
@@ -128,7 +128,7 @@ export default function Users() {
     }
   };
 
-  const removeUser = async (id: number) => {
+  const removeUser = async (id: string) => {
     if (!confirm("Deseja remover este usuário?")) {
       return;
     }
@@ -142,11 +142,17 @@ export default function Users() {
     }
   };
 
-  const roleOptions: Array<{ value: Role; label: string }> = [
-    { value: "superadmin", label: "Superadmin" },
-    { value: "motorista", label: "Motorista" },
-    { value: "admin", label: "Admin" },
-  ];
+  const roleOptions: Array<{ value: Role; label: string }> =
+    user?.role === "superadmin"
+      ? [
+          { value: "superadmin", label: "Superadmin" },
+          { value: "admin", label: "Admin" },
+          { value: "motorista", label: "Motorista" },
+        ]
+      : [
+          { value: "admin", label: "Admin" },
+          { value: "motorista", label: "Motorista" },
+        ];
 
   return (
     <div className="space-y-6">
@@ -186,8 +192,10 @@ export default function Users() {
               <div className="space-y-2">
                 <Label>E-mail</Label>
                 <Input
+                  type="email"
                   value={formData.email}
                   onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  autoComplete="email"
                 />
               </div>
               {!editingId ? (

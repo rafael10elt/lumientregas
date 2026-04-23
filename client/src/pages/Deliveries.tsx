@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { lookupCep } from "@/lib/cep";
@@ -57,14 +58,14 @@ const emptyForm: DeliveryForm = {
 
 export default function Deliveries() {
   const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [rescheduleTarget, setRescheduleTarget] = useState<number[] | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<string[] | null>(null);
   const [rescheduleForm, setRescheduleForm] = useState<RescheduleForm>({
     driverId: "",
     scheduledAt: "",
@@ -182,7 +183,7 @@ export default function Deliveries() {
         originAddress: formData.originAddress,
         destinationPostalCode: formData.destinationPostalCode || undefined,
         destinationAddress: formData.destinationAddress,
-        driverId: formData.driverId ? Number(formData.driverId) : undefined,
+        driverId: formData.driverId || undefined,
         scheduledAt: formData.scheduledAt ? new Date(formData.scheduledAt) : undefined,
         notes: formData.notes || undefined,
       };
@@ -206,7 +207,7 @@ export default function Deliveries() {
     }
   };
 
-  const updateDeliveryStatus = async (deliveryId: number, newStatus: string) => {
+  const updateDeliveryStatus = async (deliveryId: string, newStatus: string) => {
     try {
       await updateMutation.mutateAsync({
         id: deliveryId,
@@ -219,7 +220,7 @@ export default function Deliveries() {
     }
   };
 
-  const deleteDelivery = async (deliveryId: number) => {
+  const deleteDelivery = async (deliveryId: string) => {
     if (!confirm("Deseja excluir esta entrega?")) return;
 
     try {
@@ -245,7 +246,7 @@ export default function Deliveries() {
     }
   };
 
-  const openReschedule = (ids: number[]) => {
+  const openReschedule = (ids: string[]) => {
     setRescheduleTarget(ids);
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -265,7 +266,7 @@ export default function Deliveries() {
     try {
       await bulkRescheduleMutation.mutateAsync({
         ids: rescheduleTarget,
-        driverId: rescheduleForm.driverId ? Number(rescheduleForm.driverId) : undefined,
+        driverId: rescheduleForm.driverId || undefined,
         scheduledAt: new Date(rescheduleForm.scheduledAt),
         status: "pendente",
       });
@@ -283,7 +284,7 @@ export default function Deliveries() {
     setSelectedIds(checked ? visibleDeliveries.map((delivery: any) => delivery.id) : []);
   };
 
-  const toggleSelected = (deliveryId: number, checked: boolean) => {
+  const toggleSelected = (deliveryId: string, checked: boolean) => {
     setSelectedIds(prev =>
       checked ? [...prev, deliveryId] : prev.filter(id => id !== deliveryId)
     );
@@ -327,11 +328,17 @@ export default function Deliveries() {
               <div className="space-y-2">
                 <Label>CEP de origem</Label>
                 <div className="flex gap-2">
-                  <Input
-                    placeholder="00000-000"
-                    value={formData.originPostalCode}
-                    onChange={e => setFormData(prev => ({ ...prev, originPostalCode: e.target.value }))}
-                  />
+                <Input
+                  placeholder="00000-000"
+                  value={formData.originPostalCode}
+                  onChange={e =>
+                    setFormData(prev => ({
+                      ...prev,
+                      originPostalCode: formatCep(e.target.value),
+                    }))
+                  }
+                  inputMode="numeric"
+                />
                   <Button type="button" variant="outline" onClick={() => fillCep("origin")} disabled={loadingCep === "origin"}>
                     Consultar
                   </Button>
@@ -341,11 +348,17 @@ export default function Deliveries() {
               <div className="space-y-2">
                 <Label>CEP de destino</Label>
                 <div className="flex gap-2">
-                  <Input
-                    placeholder="00000-000"
-                    value={formData.destinationPostalCode}
-                    onChange={e => setFormData(prev => ({ ...prev, destinationPostalCode: e.target.value }))}
-                  />
+                <Input
+                  placeholder="00000-000"
+                  value={formData.destinationPostalCode}
+                  onChange={e =>
+                    setFormData(prev => ({
+                      ...prev,
+                      destinationPostalCode: formatCep(e.target.value),
+                    }))
+                  }
+                  inputMode="numeric"
+                />
                   <Button type="button" variant="outline" onClick={() => fillCep("destination")} disabled={loadingCep === "destination"}>
                     Consultar
                   </Button>

@@ -64,10 +64,31 @@ function Router() {
 
   useEffect(() => {
     if (!user) return;
-    if (user.role !== "motorista") return;
-    if (location === "/driver") return;
-    if (location === "/login" || location === "/trocar-senha") return;
-    setLocation("/driver");
+    const tenantPages = ["/", "/deliveries", "/drivers", "/routes", "/analytics"];
+    const saasPages = ["/tenants", "/users"];
+
+    if (user.role === "motorista") {
+      if (location === "/driver") return;
+      if (location === "/login" || location === "/trocar-senha") return;
+      setLocation("/driver");
+      return;
+    }
+
+    if (user.role === "superadmin") {
+      if (location === "/login" || location === "/trocar-senha") return;
+      if (location === "/" || tenantPages.includes(location)) {
+        setLocation("/tenants");
+        return;
+      }
+      if (saasPages.includes(location)) return;
+      if (location === "/driver") return;
+      setLocation("/tenants");
+      return;
+    }
+
+    if (location === "/tenants") {
+      setLocation("/");
+    }
   }, [location, setLocation, user]);
 
   if (location === "/trocar-senha") {

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { formatPhone, formatSlug } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { Building2, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -161,7 +162,7 @@ export default function Tenants() {
                   onChange={e =>
                     setFormData(prev => ({
                       ...prev,
-                      slug: e.target.value.toLowerCase().replace(/\s+/g, "-"),
+                      slug: formatSlug(e.target.value),
                     }))
                   }
                   placeholder="empresa-exemplo"
@@ -177,15 +178,25 @@ export default function Tenants() {
               <div className="space-y-2">
                 <Label>E-mail</Label>
                 <Input
+                  type="email"
                   value={formData.contactEmail}
                   onChange={e => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
+                  autoComplete="email"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Telefone</Label>
                 <Input
+                  type="tel"
                   value={formData.contactPhone}
-                  onChange={e => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
+                  onChange={e =>
+                    setFormData(prev => ({
+                      ...prev,
+                      contactPhone: formatPhone(e.target.value),
+                    }))
+                  }
+                  inputMode="tel"
+                  autoComplete="tel"
                 />
               </div>
               <div className="space-y-2">

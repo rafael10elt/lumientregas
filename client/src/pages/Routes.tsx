@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { lookupCep } from "@/lib/cep";
+import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { ArrowDown, ArrowUp, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
@@ -15,14 +16,14 @@ type RoutePlanItem = any & {
   distanceFromPreviousKm?: number | null;
 };
 
-type RoutePlans = Record<number, RoutePlanItem[]>;
+type RoutePlans = Record<string, RoutePlanItem[]>;
 
 export default function Routes() {
   const [basePostalCode, setBasePostalCode] = useState("");
   const [baseAddress, setBaseAddress] = useState("Rua Principal, 1 - Centro");
   const [selectedDriverId, setSelectedDriverId] = useState<string>("all");
   const [routePlans, setRoutePlans] = useState<RoutePlans>({});
-  const [activeDriverIds, setActiveDriverIds] = useState<number[]>([]);
+  const [activeDriverIds, setActiveDriverIds] = useState<string[]>([]);
   const [loadingBase, setLoadingBase] = useState(false);
 
   const todayStart = useMemo(() => {
@@ -54,7 +55,7 @@ export default function Routes() {
   );
 
   const visibleDrivers = useMemo(() => {
-    const byDriver = new Map<number, RoutePlanItem[]>();
+    const byDriver = new Map<string, RoutePlanItem[]>();
     for (const delivery of openDeliveries) {
       if (!delivery.driverId) continue;
       const current = byDriver.get(delivery.driverId) ?? [];
@@ -63,7 +64,7 @@ export default function Routes() {
     }
 
     const result = drivers.filter((driver: any) =>
-      selectedDriverId === "all" ? true : driver.id === Number(selectedDriverId)
+      selectedDriverId === "all" ? true : driver.id === selectedDriverId
     );
 
     return result.map((driver: any) => ({
@@ -91,7 +92,7 @@ export default function Routes() {
     }
   };
 
-  const generateRoute = async (driverId: number) => {
+  const generateRoute = async (driverId: string) => {
     try {
       const data = await optimizeMutation.mutateAsync({
         driverId,
@@ -117,7 +118,7 @@ export default function Routes() {
     }
   };
 
-  const moveStop = (driverId: number, index: number, direction: -1 | 1) => {
+  const moveStop = (driverId: string, index: number, direction: -1 | 1) => {
     setRoutePlans(prev => {
       const plan = [...(prev[driverId] ?? [])];
       const targetIndex = index + direction;
@@ -130,7 +131,7 @@ export default function Routes() {
     });
   };
 
-  const saveRoute = async (driverId: number) => {
+  const saveRoute = async (driverId: string) => {
     const plan = routePlans[driverId] ?? [];
     if (plan.length === 0) {
       toast.error("Não há rota gerada para salvar");
@@ -155,7 +156,7 @@ export default function Routes() {
     }
   };
 
-  const resetRoute = (driverId: number) => {
+  const resetRoute = (driverId: string) => {
     setRoutePlans(prev => {
       const next = { ...prev };
       delete next[driverId];
@@ -185,7 +186,8 @@ export default function Routes() {
             <Input
               placeholder="00000-000"
               value={basePostalCode}
-              onChange={e => setBasePostalCode(e.target.value)}
+              onChange={e => setBasePostalCode(formatCep(e.target.value))}
+              inputMode="numeric"
             />
           </div>
           <div className="space-y-2">

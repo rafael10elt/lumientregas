@@ -346,7 +346,7 @@ export async function getTenantById(id: string) {
 
 export async function getTenants(accessToken?: string | null) {
   const db = clientFor(accessToken);
-  const { data, error } = await db.from("tenants").select("*").order("createdAt", { ascending: false });
+  const { data, error } = await db.rpc("list_tenants");
 
   if (error) {
     throw error;
@@ -357,38 +357,33 @@ export async function getTenants(accessToken?: string | null) {
 
 export async function createTenant(input: InsertTenant, accessToken?: string | null) {
   const db = clientFor(accessToken);
-  const { data, error } = await db
-    .from("tenants")
-    .insert(
-      removeUndefined({
-        ...input,
-        paymentDueAt: toIsoString(input.paymentDueAt),
-        createdAt: toIsoString(input.createdAt),
-        updatedAt: toIsoString(input.updatedAt),
-      })
-    )
-    .select("*")
-    .single();
+  const { data, error } = await db.rpc("create_tenant", {
+    p_payload: removeUndefined({
+      ...input,
+      paymentDueAt: toIsoString(input.paymentDueAt),
+      createdAt: toIsoString(input.createdAt),
+      updatedAt: toIsoString(input.updatedAt),
+    }),
+  });
 
   if (error) {
     throw error;
   }
 
-  return data ? mapTenant(data) : null;
+  const tenant = Array.isArray(data) ? data[0] : data;
+  return tenant ? mapTenant(tenant) : null;
 }
 
 export async function updateTenant(id: string, updates: Partial<InsertTenant>, accessToken?: string | null) {
   const db = clientFor(accessToken);
-  const { error } = await db
-    .from("tenants")
-    .update(
-      removeUndefined({
-        ...updates,
-        paymentDueAt: toIsoString(updates.paymentDueAt),
-        updatedAt: new Date().toISOString(),
-      })
-    )
-    .eq("id", id);
+  const { error } = await db.rpc("update_tenant", {
+    p_id: id,
+    p_payload: removeUndefined({
+      ...updates,
+      paymentDueAt: toIsoString(updates.paymentDueAt),
+      updatedAt: new Date().toISOString(),
+    }),
+  });
 
   if (error) {
     throw error;
@@ -397,7 +392,7 @@ export async function updateTenant(id: string, updates: Partial<InsertTenant>, a
 
 export async function deleteTenant(id: string, accessToken?: string | null) {
   const db = clientFor(accessToken);
-  const { error } = await db.from("tenants").delete().eq("id", id);
+  const { error } = await db.rpc("delete_tenant", { p_id: id });
 
   if (error) {
     throw error;

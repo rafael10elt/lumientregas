@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, publicProcedure, router, tenantProtectedProcedure } from "./_core/trpc";
+import { adminProcedure, publicProcedure, router, superadminProcedure, tenantProtectedProcedure } from "./_core/trpc";
 import {
   createAuthUser,
   createDelivery,
@@ -336,6 +336,13 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
+        if (input.role === "superadmin" && ctx.user?.role !== "superadmin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Only superadmin can create superadmin users",
+          });
+        }
+
         const tenantId =
           input.role === "superadmin"
             ? null
@@ -369,6 +376,13 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
+        if (input.role === "superadmin" && ctx.user?.role !== "superadmin") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Only superadmin can assign superadmin role",
+          });
+        }
+
         const { id, ...updates } = input;
         await updateUser(id, updates, ctx.accessToken);
         return { success: true };
@@ -383,9 +397,9 @@ export const appRouter = router({
   }),
 
   tenants: router({
-    list: adminProcedure.query(async ({ ctx }) => getTenants(ctx.accessToken)),
+    list: superadminProcedure.query(async ({ ctx }) => getTenants(ctx.accessToken)),
 
-    create: adminProcedure
+    create: superadminProcedure
       .input(
         z.object({
           name: z.string().min(1),
@@ -411,7 +425,7 @@ export const appRouter = router({
         return { success: true, tenant };
       }),
 
-    update: adminProcedure
+    update: superadminProcedure
       .input(
         z.object({
           id: z.string().uuid(),
@@ -432,7 +446,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: adminProcedure
+    delete: superadminProcedure
       .input(z.object({ id: z.string().uuid() }))
       .mutation(async ({ input, ctx }) => {
         await deleteTenant(input.id, ctx.accessToken);

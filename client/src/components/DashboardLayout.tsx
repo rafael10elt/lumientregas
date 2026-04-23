@@ -38,13 +38,18 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 import { BrandMark } from "./BrandMark";
 
-const baseMenuItems = [
+const operationalMenuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Package2, label: "Entregas", path: "/deliveries" },
   { icon: CarFront, label: "Motoristas", path: "/drivers" },
   { icon: UserCog, label: "Usuários", path: "/users" },
   { icon: Truck, label: "Rotas", path: "/routes" },
   { icon: TrendingUp, label: "Analytics", path: "/analytics" },
+];
+
+const saasMenuItems = [
+  { icon: Shield, label: "Tenants", path: "/tenants" },
+  { icon: UserCog, label: "Usuários", path: "/users" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -132,13 +137,9 @@ function DashboardLayoutContent({
   const menuItems =
     user?.role === "motorista"
       ? [{ icon: Users, label: "Painel do motorista", path: "/driver" }]
-      : [
-          ...baseMenuItems.slice(0, 1),
-          ...(user?.role === "superadmin"
-            ? [{ icon: Shield, label: "Tenants", path: "/tenants" }]
-            : []),
-          ...baseMenuItems.slice(1),
-        ];
+      : user?.role === "superadmin"
+        ? saasMenuItems
+        : operationalMenuItems;
 
   const activeMenuItem = menuItems.find(item => item.path === location);
 
@@ -224,9 +225,7 @@ function DashboardLayoutContent({
               </div>
               <p className="mt-1 truncate text-sm font-medium">{user?.name || "-"}</p>
               <p className="mt-1 truncate text-xs text-muted-foreground">
-                {user?.role === "superadmin"
-                  ? "Acesso SaaS"
-                  : tenant?.name || "Sem tenant"}
+                {user?.role === "superadmin" ? "Acesso SaaS" : tenant?.name || "Sem tenant"}
               </p>
             </div>
             <DropdownMenu>

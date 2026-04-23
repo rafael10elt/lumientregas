@@ -72,8 +72,10 @@ createRoot(document.getElementById("root")!).render(
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(error => {
-      console.error("[PWA] Failed to register service worker", error);
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      return Promise.all(registrations.map(registration => registration.unregister()));
+    }).catch(error => {
+      console.warn("[PWA] Failed to unregister service workers", error);
     });
   });
 }
