@@ -3,6 +3,28 @@ import { supabase } from "@/lib/supabase";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type AuthSession = {
+  user: {
+    id: string;
+    openId: string;
+    authUserId: string | null;
+    tenantId: string | null;
+    name: string | null;
+    email: string | null;
+    loginMethod: string | null;
+    role: "superadmin" | "admin" | "motorista";
+  } | null;
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    status: "active" | "suspended";
+    paymentStatus: "ok" | "pending" | "overdue";
+  } | null;
+  accessBlocked: boolean;
+  accessBlockedReason: string | null;
+};
+
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
   redirectPath?: string;
@@ -68,9 +90,12 @@ export function useAuth(options?: UseAuthOptions) {
   }, [logoutMutation, utils.auth.me]);
 
   const state = useMemo(() => {
-    const user = meQuery.data ?? null;
+    const session = (meQuery.data ?? null) as AuthSession | null;
     return {
-      user,
+      user: session?.user ?? null,
+      tenant: session?.tenant ?? null,
+      accessBlocked: session?.accessBlocked ?? false,
+      accessBlockedReason: session?.accessBlockedReason ?? null,
       loading: !sessionReady || meQuery.isLoading || logoutMutation.isPending,
       error: meQuery.error ?? logoutMutation.error ?? null,
       isAuthenticated: Boolean(sessionToken),

@@ -1,12 +1,15 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
-import type { User } from "../../drizzle/schema";
-import { ensureUserProfile, getUserByAuthUserId } from "../db";
+import type { Tenant, User } from "../../drizzle/schema";
+import { ensureUserProfile, getTenantById, getUserByAuthUserId } from "../db";
 import { createSupabaseAnonClient } from "./supabase";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
   user: User | null;
+  tenant?: Tenant | null;
+  accessBlocked?: boolean;
+  accessBlockedReason?: string | null;
   accessToken: string | null;
 };
 
@@ -22,6 +25,9 @@ export async function createContext(
 ): Promise<TrpcContext> {
   const accessToken = readBearerToken(opts.req);
   let user: User | null = null;
+  let tenant: Tenant | null = null;
+  let accessBlocked = false;
+  let accessBlockedReason: string | null = null;
 
   if (accessToken) {
     try {
@@ -39,9 +45,30 @@ export async function createContext(
           });
           user = (await getUserByAuthUserId(data.user.id)) ?? null;
         }
+
+        if (user?.tenantId) {
+          tenant = await getTenantById(user.tenantId);
+        }
+
+        if (user && user.role !== "superadmin") {
+          if (!user.tenantId) {
+            accessBlocked = true;
+            accessBlockedReason = "Usuário sem tenant vinculado.";
+          } else if (!tenant) {
+            accessBlocked = true;
+            accessBlockedReason = "Tenant não encontrado.";
+          } else if (tenant.status !== "active") {
+            accessBlocked = true;
+            accessBlockedReason = "Seu tenant está suspenso. Entre em contato com o administrador do sistema.";
+          } else if (tenant.paymentStatus !== "ok") {
+            accessBlocked = true;
+            accessBlockedReason = "Seu tenant está com pagamento pendente. Entre em contato com o administrador do sistema.";
+          }
+        }
       }
     } catch {
       user = null;
+      tenant = null;
     }
   }
 
@@ -49,6 +76,9 @@ export async function createContext(
     req: opts.req,
     res: opts.res,
     user,
+    tenant,
+    accessBlocked,
+    accessBlockedReason,
     accessToken,
   };
 }

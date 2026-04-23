@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RESET_PASSWORD_PATH } from "@/const";
 import { BrandMark } from "@/components/BrandMark";
-import { PwaInstallButton } from "@/components/PwaInstallButton";
 import { supabase } from "@/lib/supabase";
 import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -133,7 +132,6 @@ export default function Login() {
               >
                 Esqueci minha senha
               </Button>
-              <PwaInstallButton fullWidth />
             </div>
 
             <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-left text-xs text-blue-900">

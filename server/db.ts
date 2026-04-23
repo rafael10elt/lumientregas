@@ -5,12 +5,14 @@ import {
   type Delivery,
   type Driver,
   type DriverVehicle,
+  type InsertTenant,
   type InsertDelivery,
   type InsertClient,
   type InsertClientBase,
   type InsertDriver,
   type InsertDriverVehicle,
   type InsertUser,
+  type Tenant,
   type User,
 } from "../drizzle/schema";
 import { createSupabaseAdminClient, createSupabaseAnonClient } from "./_core/supabase";
@@ -36,6 +38,7 @@ function mapUser(row: Record<string, any>): User {
     id: String(row.id),
     openId: String(row.openId),
     authUserId: row.authUserId ?? null,
+    tenantId: row.tenantId ?? null,
     name: row.name ?? null,
     email: row.email ?? null,
     loginMethod: row.loginMethod ?? null,
@@ -43,6 +46,23 @@ function mapUser(row: Record<string, any>): User {
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
     lastSignedIn: toDate(row.lastSignedIn)!,
+  };
+}
+
+function mapTenant(row: Record<string, any>): Tenant {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    slug: String(row.slug),
+    contactName: row.contactName ?? null,
+    contactEmail: row.contactEmail ?? null,
+    contactPhone: row.contactPhone ?? null,
+    status: row.status,
+    paymentStatus: row.paymentStatus,
+    paymentDueAt: toDate(row.paymentDueAt),
+    notes: row.notes ?? null,
+    createdAt: toDate(row.createdAt)!,
+    updatedAt: toDate(row.updatedAt)!,
   };
 }
 
@@ -169,18 +189,14 @@ export async function ensureUserProfile(input: InsertUser): Promise<void> {
   }
 
   const db = createSupabaseAdminClient();
-  const { count: adminCount } = await db
-    .from("users")
-    .select("id", { count: "exact", head: true })
-    .eq("role", "admin");
-  const roleToStore = adminCount === 0 ? "admin" : input.role ?? "user";
   const values = removeUndefined({
     openId: input.openId,
     authUserId: input.authUserId,
+    tenantId: input.tenantId ?? null,
     name: input.name ?? null,
     email: input.email ?? null,
     loginMethod: input.loginMethod ?? "supabase",
-    role: roleToStore,
+    role: input.role ?? "motorista",
     lastSignedIn: toIsoString(input.lastSignedIn) ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
@@ -209,8 +225,8 @@ export async function getUserByOpenId(openId: string) {
   return data ? mapUser(data) : undefined;
 }
 
-export async function getUsers() {
-  const db = createSupabaseAdminClient();
+export async function getUsers(accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { data, error } = await db
     .from("users")
     .select("*")
@@ -225,13 +241,17 @@ export async function getUsers() {
 
 export async function updateUser(
   id: string,
-  updates: Partial<Pick<InsertUser, "name" | "email" | "loginMethod"> & { role: User["role"] }>
+  updates: Partial<
+    Pick<InsertUser, "name" | "email" | "loginMethod" | "tenantId"> & { role: User["role"] }
+  >,
+  accessToken?: string | null
 ) {
-  const db = createSupabaseAdminClient();
+  const db = clientFor(accessToken);
   const { error } = await db
     .from("users")
     .update(
       removeUndefined({
+        tenantId: updates.tenantId ?? undefined,
         ...updates,
         updatedAt: new Date().toISOString(),
       })
@@ -248,6 +268,7 @@ export async function createAuthUser(input: {
   password?: string;
   name?: string | null;
   role?: User["role"];
+  tenantId?: string | null;
 }) {
   const db = createSupabaseAdminClient();
   const { data, error } = await db.auth.admin.createUser({
@@ -271,17 +292,18 @@ export async function createAuthUser(input: {
   await ensureUserProfile({
     openId: data.user.id,
     authUserId: data.user.id,
+    tenantId: input.tenantId ?? null,
     name: input.name ?? input.email,
     email: input.email,
     loginMethod: "supabase",
-    role: input.role ?? "user",
+    role: input.role ?? "motorista",
   });
 
   return getUserByAuthUserId(data.user.id);
 }
 
-export async function deleteUserAccount(id: string) {
-  const db = createSupabaseAdminClient();
+export async function deleteUserAccount(id: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { data, error } = await db
     .from("users")
     .select("authUserId")
@@ -311,8 +333,79 @@ export async function deleteUserAccount(id: string) {
   }
 }
 
-export async function getClients() {
+export async function getTenantById(id: string) {
   const db = createSupabaseAdminClient();
+  const { data, error } = await db.from("tenants").select("*").eq("id", id).maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ? mapTenant(data) : null;
+}
+
+export async function getTenants(accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { data, error } = await db.from("tenants").select("*").order("createdAt", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map(mapTenant);
+}
+
+export async function createTenant(input: InsertTenant, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { data, error } = await db
+    .from("tenants")
+    .insert(
+      removeUndefined({
+        ...input,
+        paymentDueAt: toIsoString(input.paymentDueAt),
+        createdAt: toIsoString(input.createdAt),
+        updatedAt: toIsoString(input.updatedAt),
+      })
+    )
+    .select("*")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ? mapTenant(data) : null;
+}
+
+export async function updateTenant(id: string, updates: Partial<InsertTenant>, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { error } = await db
+    .from("tenants")
+    .update(
+      removeUndefined({
+        ...updates,
+        paymentDueAt: toIsoString(updates.paymentDueAt),
+        updatedAt: new Date().toISOString(),
+      })
+    )
+    .eq("id", id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteTenant(id: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { error } = await db.from("tenants").delete().eq("id", id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getClients(accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { data, error } = await db
     .from("clients")
     .select("*")
@@ -321,8 +414,8 @@ export async function getClients() {
   return (data ?? []).map(mapClient);
 }
 
-export async function createClientRecord(input: InsertClient) {
-  const db = createSupabaseAdminClient();
+export async function createClientRecord(input: InsertClient, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { data, error } = await db
     .from("clients")
     .insert(
@@ -338,8 +431,8 @@ export async function createClientRecord(input: InsertClient) {
   return data ? mapClient(data) : null;
 }
 
-export async function updateClientRecord(id: string, updates: Partial<InsertClient>) {
-  const db = createSupabaseAdminClient();
+export async function updateClientRecord(id: string, updates: Partial<InsertClient>, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { error } = await db
     .from("clients")
     .update(removeUndefined({ ...updates, updatedAt: new Date().toISOString() }))
@@ -347,14 +440,14 @@ export async function updateClientRecord(id: string, updates: Partial<InsertClie
   if (error) throw error;
 }
 
-export async function deleteClientRecord(id: string) {
-  const db = createSupabaseAdminClient();
+export async function deleteClientRecord(id: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { error } = await db.from("clients").delete().eq("id", id);
   if (error) throw error;
 }
 
-export async function getClientBases(clientId?: string) {
-  const db = createSupabaseAdminClient();
+export async function getClientBases(clientId?: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   let query = db.from("client_bases").select("*");
   if (clientId) query = query.eq("clientId", clientId);
   const { data, error } = await query.order("isDefault", { ascending: false }).order("name", { ascending: true });
@@ -362,8 +455,8 @@ export async function getClientBases(clientId?: string) {
   return (data ?? []).map(mapClientBase);
 }
 
-export async function createClientBase(input: InsertClientBase) {
-  const db = createSupabaseAdminClient();
+export async function createClientBase(input: InsertClientBase, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { data, error } = await db
     .from("client_bases")
     .insert(
@@ -380,8 +473,8 @@ export async function createClientBase(input: InsertClientBase) {
   return data ? mapClientBase(data) : null;
 }
 
-export async function updateClientBase(id: string, updates: Partial<InsertClientBase>) {
-  const db = createSupabaseAdminClient();
+export async function updateClientBase(id: string, updates: Partial<InsertClientBase>, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { error } = await db
     .from("client_bases")
     .update(removeUndefined({ ...updates, updatedAt: new Date().toISOString() }))
@@ -389,8 +482,8 @@ export async function updateClientBase(id: string, updates: Partial<InsertClient
   if (error) throw error;
 }
 
-export async function deleteClientBase(id: string) {
-  const db = createSupabaseAdminClient();
+export async function deleteClientBase(id: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   const { error } = await db.from("client_bases").delete().eq("id", id);
   if (error) throw error;
 }
@@ -585,8 +678,8 @@ export async function deleteDriver(id: string, accessToken?: string | null) {
   if (error) throw error;
 }
 
-export async function getDriverVehicles(driverId?: string) {
-  const db = createSupabaseAdminClient();
+export async function getDriverVehicles(driverId?: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
   let query = db.from("driver_vehicles").select("*");
   if (driverId !== undefined) {
     query = query.eq("driverId", driverId);

@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, publicProcedure, router, tenantProtectedProcedure } from "./_core/trpc";
 import {
   createAuthUser,
   createDelivery,
@@ -10,7 +10,7 @@ import {
   createDriver,
   deleteDriverVehicle,
   deleteDriver,
-  getUserByOpenId,
+  createTenant,
   getDeliveries,
   getDeliveryById,
   getDriverVehicles,
@@ -18,10 +18,13 @@ import {
   getDriverById,
   getUsers,
   deleteUserAccount,
+  deleteTenant,
+  getTenants,
   updateDelivery,
   updateDriver,
   updateDeliveriesOrder,
   updateDriverVehicle,
+  updateTenant,
   updateUser,
 } from "./db";
 import { geocodeAddress, optimizeByProximity } from "./_core/routePlanner";
@@ -30,7 +33,12 @@ import { z } from "zod";
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => ({
+      user: opts.ctx.user,
+      tenant: opts.ctx.tenant ?? null,
+      accessBlocked: opts.ctx.accessBlocked ?? false,
+      accessBlockedReason: opts.ctx.accessBlockedReason ?? null,
+    })),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -39,12 +47,12 @@ export const appRouter = router({
   }),
 
   deliveries: router({
-    list: protectedProcedure
+    list: tenantProtectedProcedure
       .input(
-        z
+          z
           .object({
             status: z.string().optional(),
-            driverId: z.number().optional(),
+            driverId: z.coerce.string().optional(),
             startDate: z.date().optional(),
             endDate: z.date().optional(),
           })
@@ -52,11 +60,11 @@ export const appRouter = router({
       )
       .query(async ({ input, ctx }) => getDeliveries(input, ctx.accessToken)),
 
-    getById: protectedProcedure
-      .input(z.number())
+    getById: tenantProtectedProcedure
+      .input(z.coerce.string())
       .query(async ({ input, ctx }) => getDeliveryById(input, ctx.accessToken)),
 
-    create: protectedProcedure
+    create: tenantProtectedProcedure
       .input(
         z.object({
           clientName: z.string(),
@@ -68,7 +76,7 @@ export const appRouter = router({
           destinationAddress: z.string(),
           destinationLat: z.string().optional(),
           destinationLng: z.string().optional(),
-          driverId: z.number().optional(),
+          driverId: z.coerce.string().optional(),
           scheduledAt: z.date().optional(),
           notes: z.string().optional(),
           distance: z.string().optional(),
@@ -86,12 +94,12 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    update: protectedProcedure
+    update: tenantProtectedProcedure
       .input(
         z.object({
-          id: z.number(),
+          id: z.coerce.string(),
           status: z.enum(["pendente", "em_rota", "entregue", "cancelado"]).optional(),
-          driverId: z.number().optional(),
+          driverId: z.coerce.string().optional(),
           notes: z.string().optional(),
           originPostalCode: z.string().optional(),
           originAddress: z.string().optional(),
@@ -105,15 +113,15 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: protectedProcedure
-      .input(z.number())
+    delete: tenantProtectedProcedure
+      .input(z.coerce.string())
       .mutation(async ({ input, ctx }) => {
         await deleteDelivery(input, ctx.accessToken);
         return { success: true };
       }),
 
-    bulkDelete: protectedProcedure
-      .input(z.array(z.number()))
+    bulkDelete: tenantProtectedProcedure
+      .input(z.array(z.coerce.string()))
       .mutation(async ({ input, ctx }) => {
         for (const id of input) {
           await deleteDelivery(id, ctx.accessToken);
@@ -121,12 +129,12 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    bulkReschedule: protectedProcedure
+    bulkReschedule: tenantProtectedProcedure
       .input(
         z.object({
-          ids: z.array(z.number()),
+          ids: z.array(z.coerce.string()),
           scheduledAt: z.date(),
-          driverId: z.number().optional(),
+          driverId: z.coerce.string().optional(),
           status: z.enum(["pendente", "em_rota", "entregue", "cancelado"]).optional(),
         })
       )
@@ -146,12 +154,12 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    reorder: protectedProcedure
+    reorder: tenantProtectedProcedure
       .input(
         z.object({
-          driverId: z.number(),
+          driverId: z.coerce.string(),
           scheduledAt: z.date().optional(),
-          order: z.array(z.object({ id: z.number(), routeOrder: z.number() })),
+          order: z.array(z.object({ id: z.coerce.string(), routeOrder: z.number() })),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -169,13 +177,13 @@ export const appRouter = router({
   }),
 
   drivers: router({
-    list: protectedProcedure.query(async ({ ctx }) => getDrivers(ctx.accessToken)),
+    list: tenantProtectedProcedure.query(async ({ ctx }) => getDrivers(ctx.accessToken)),
 
-    getById: protectedProcedure
-      .input(z.number())
+    getById: tenantProtectedProcedure
+      .input(z.coerce.string())
       .query(async ({ input, ctx }) => getDriverById(input, ctx.accessToken)),
 
-    create: protectedProcedure
+    create: tenantProtectedProcedure
       .input(
         z.object({
           name: z.string(),
@@ -189,10 +197,10 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    update: protectedProcedure
+    update: tenantProtectedProcedure
       .input(
         z.object({
-          id: z.number(),
+          id: z.coerce.string(),
           name: z.string().optional(),
           email: z.string().optional(),
           phone: z.string().optional(),
@@ -206,8 +214,8 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: protectedProcedure
-      .input(z.number())
+    delete: tenantProtectedProcedure
+      .input(z.coerce.string())
       .mutation(async ({ input, ctx }) => {
         await deleteDriver(input, ctx.accessToken);
         return { success: true };
@@ -215,14 +223,14 @@ export const appRouter = router({
   }),
 
   driverVehicles: router({
-    list: protectedProcedure
-      .input(z.object({ driverId: z.number().optional() }).optional())
-      .query(async ({ input }) => getDriverVehicles(input?.driverId)),
+    list: tenantProtectedProcedure
+      .input(z.object({ driverId: z.coerce.string().optional() }).optional())
+      .query(async ({ input, ctx }) => getDriverVehicles(input?.driverId, ctx.accessToken)),
 
-    create: protectedProcedure
+    create: tenantProtectedProcedure
       .input(
         z.object({
-          driverId: z.number(),
+          driverId: z.coerce.string(),
           model: z.string(),
           plate: z.string(),
           nickname: z.string().optional(),
@@ -234,10 +242,10 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    update: protectedProcedure
+    update: tenantProtectedProcedure
       .input(
         z.object({
-          id: z.number(),
+          id: z.coerce.string(),
           model: z.string().optional(),
           plate: z.string().optional(),
           nickname: z.string().optional(),
@@ -250,8 +258,8 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: protectedProcedure
-      .input(z.number())
+    delete: tenantProtectedProcedure
+      .input(z.coerce.string())
       .mutation(async ({ input, ctx }) => {
         await deleteDriverVehicle(input, ctx.accessToken);
         return { success: true };
@@ -259,10 +267,10 @@ export const appRouter = router({
   }),
 
   routes: router({
-    optimize: protectedProcedure
+    optimize: tenantProtectedProcedure
       .input(
         z.object({
-          driverId: z.number(),
+          driverId: z.coerce.string(),
           baseAddress: z.string(),
           scheduledAt: z.date().optional(),
         })
@@ -305,7 +313,7 @@ export const appRouter = router({
         };
       }),
 
-    geocode: protectedProcedure
+    geocode: tenantProtectedProcedure
       .input(z.object({ address: z.string() }))
       .query(async ({ input }) => {
         const point = await geocodeAddress(input.address);
@@ -314,7 +322,7 @@ export const appRouter = router({
   }),
 
   users: router({
-    list: adminProcedure.query(async () => getUsers()),
+    list: adminProcedure.query(async ({ ctx }) => getUsers(ctx.accessToken)),
 
     create: adminProcedure
       .input(
@@ -322,34 +330,98 @@ export const appRouter = router({
           email: z.string().email(),
           password: z.string().min(6).optional(),
           name: z.string().optional(),
-          role: z.enum(["user", "admin"]).optional(),
+          role: z.enum(["superadmin", "admin", "motorista"]).optional(),
+          tenantId: z.coerce.string().optional(),
         })
       )
-      .mutation(async ({ input }) => {
-        const user = await createAuthUser(input);
+      .mutation(async ({ input, ctx }) => {
+        const tenantId = ctx.user?.role === "superadmin" ? input.tenantId ?? null : ctx.user?.tenantId ?? null;
+        const user = await createAuthUser({
+          ...input,
+          tenantId,
+        });
         return { success: true, user };
       }),
 
     update: adminProcedure
       .input(
         z.object({
-          id: z.number(),
+          id: z.coerce.string(),
           name: z.string().optional(),
           email: z.string().optional(),
-          role: z.enum(["user", "admin"]).optional(),
+          role: z.enum(["superadmin", "admin", "motorista"]).optional(),
           loginMethod: z.string().optional(),
+          tenantId: z.coerce.string().nullable().optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { id, ...updates } = input;
-        await updateUser(id, updates);
+        await updateUser(id, updates, ctx.accessToken);
         return { success: true };
       }),
 
     delete: adminProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await deleteUserAccount(input.id);
+      .input(z.object({ id: z.coerce.string() }))
+      .mutation(async ({ input, ctx }) => {
+        await deleteUserAccount(input.id, ctx.accessToken);
+        return { success: true };
+      }),
+  }),
+
+  tenants: router({
+    list: adminProcedure.query(async ({ ctx }) => getTenants(ctx.accessToken)),
+
+    create: adminProcedure
+      .input(
+        z.object({
+          name: z.string().min(1),
+          slug: z.string().min(1),
+          contactName: z.string().optional(),
+          contactEmail: z.string().email().optional().or(z.literal("")),
+          contactPhone: z.string().optional(),
+          status: z.enum(["active", "suspended"]).optional(),
+          paymentStatus: z.enum(["ok", "pending", "overdue"]).optional(),
+          paymentDueAt: z.date().nullable().optional(),
+          notes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const tenant = await createTenant(
+          {
+            ...input,
+            contactEmail: input.contactEmail || null,
+            paymentDueAt: input.paymentDueAt ?? null,
+          },
+          ctx.accessToken
+        );
+        return { success: true, tenant };
+      }),
+
+    update: adminProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          name: z.string().optional(),
+          slug: z.string().optional(),
+          contactName: z.string().optional().nullable(),
+          contactEmail: z.string().email().optional().nullable(),
+          contactPhone: z.string().optional().nullable(),
+          status: z.enum(["active", "suspended"]).optional(),
+          paymentStatus: z.enum(["ok", "pending", "overdue"]).optional(),
+          paymentDueAt: z.date().nullable().optional(),
+          notes: z.string().optional().nullable(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const { id, ...updates } = input;
+        await updateTenant(id, updates, ctx.accessToken);
+        return { success: true };
+      }),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ input, ctx }) => {
+        await deleteTenant(input.id, ctx.accessToken);
         return { success: true };
       }),
   }),

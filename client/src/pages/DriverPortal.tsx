@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { CheckCircle2, Clock3, Loader2, MapPin, Package2 } from "lucide-react";
 import { useMemo } from "react";
@@ -159,6 +160,14 @@ export default function DriverPortal() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <Button
+                    variant="outline"
+                    className="mt-3 w-full md:w-auto"
+                    onClick={() => openGpsRoute(delivery.destinationAddress)}
+                  >
+                    <MapPin className="mr-2 h-4 w-4" />
+                    Abrir no GPS
+                  </Button>
                 </div>
               ))
             )}
@@ -186,6 +195,14 @@ export default function DriverPortal() {
                         {delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleDateString("pt-BR") : "Sem data"}
                       </div>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openGpsRoute(delivery.destinationAddress)}
+                    >
+                      <MapPin className="mr-2 h-4 w-4" />
+                      GPS
+                    </Button>
                     <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
                       {DELIVERY_STATUSES.find(status => status.value === delivery.status)?.label ?? delivery.status}
                     </span>

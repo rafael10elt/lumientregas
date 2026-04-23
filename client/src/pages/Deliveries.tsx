@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { lookupCep } from "@/lib/cep";
-import { Calendar, MapPin, Package2, Pencil, Plus, Search, ShieldAlert, Trash2 } from "lucide-react";
+import { Calendar, MapPin, Navigation, Package2, Pencil, Plus, Search, ShieldAlert, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -588,6 +589,14 @@ export default function Deliveries() {
                                 Remanejar
                               </Button>
                             ) : null}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openGpsRoute(delivery.destinationAddress)}
+                            >
+                              <Navigation className="mr-2 h-4 w-4" />
+                              GPS
+                            </Button>
                             <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => deleteDelivery(delivery.id)}>
                               Excluir
                             </Button>

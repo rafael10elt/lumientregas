@@ -1,11 +1,43 @@
-export type UserRole = "user" | "admin";
+export type UserRole = "superadmin" | "admin" | "motorista";
 export type DriverStatus = "available" | "busy" | "offline";
 export type DeliveryStatus = "pendente" | "em_rota" | "entregue" | "cancelado";
+export type TenantStatus = "active" | "suspended";
+export type TenantPaymentStatus = "ok" | "pending" | "overdue";
+
+export type Tenant = {
+  id: string;
+  name: string;
+  slug: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  status: TenantStatus;
+  paymentStatus: TenantPaymentStatus;
+  paymentDueAt: Date | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type InsertTenant = {
+  name: string;
+  slug: string;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  status?: TenantStatus;
+  paymentStatus?: TenantPaymentStatus;
+  paymentDueAt?: Date | string | null;
+  notes?: string | null;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
 
 export type User = {
   id: string;
   openId: string;
   authUserId: string | null;
+  tenantId: string | null;
   name: string | null;
   email: string | null;
   loginMethod: string | null;
@@ -18,6 +50,7 @@ export type User = {
 export type InsertUser = {
   openId: string;
   authUserId?: string | null;
+  tenantId?: string | null;
   name?: string | null;
   email?: string | null;
   loginMethod?: string | null;

@@ -4,34 +4,53 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Pencil, Plus, Trash2, Users as UsersIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+type Role = "superadmin" | "admin" | "motorista";
+
 type UserForm = {
   name: string;
   email: string;
   password: string;
-  role: "user" | "admin";
+  role: Role;
+  tenantId: string;
 };
 
 const emptyForm: UserForm = {
   name: "",
   email: "",
   password: "",
-  role: "user",
+  role: "motorista",
+  tenantId: "",
+};
+
+const ROLE_LABELS: Record<Role, string> = {
+  superadmin: "Superadmin",
+  admin: "Admin",
+  motorista: "Motorista",
 };
 
 export default function Users() {
+  const { user, tenant } = useAuth();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<UserForm>(emptyForm);
 
   const { data: users = [], refetch } = trpc.users.list.useQuery();
+  const { data: tenants = [] } = trpc.tenants.list.useQuery(undefined, {
+    enabled: user?.role === "superadmin",
+  });
   const createMutation = trpc.users.create.useMutation();
   const updateMutation = trpc.users.update.useMutation();
   const deleteMutation = trpc.users.delete.useMutation();
+
+  const tenantNameById = useMemo(() => {
+    return new Map(tenants.map((entry: any) => [entry.id, entry.name]));
+  }, [tenants]);
 
   const sortedUsers = useMemo(
     () =>
@@ -42,19 +61,30 @@ export default function Users() {
     [users]
   );
 
+  const visibleUsers = useMemo(() => {
+    if (user?.role === "superadmin") {
+      return sortedUsers;
+    }
+    return sortedUsers.filter((entry: any) => entry.role !== "superadmin");
+  }, [sortedUsers, user?.role]);
+
   const openCreate = () => {
     setEditingId(null);
-    setFormData(emptyForm);
+    setFormData({
+      ...emptyForm,
+      tenantId: user?.role === "admin" ? tenant?.id ?? "" : "",
+    });
     setOpen(true);
   };
 
-  const openEdit = (user: any) => {
-    setEditingId(user.id);
+  const openEdit = (entry: any) => {
+    setEditingId(entry.id);
     setFormData({
-      name: user.name ?? "",
-      email: user.email ?? "",
+      name: entry.name ?? "",
+      email: entry.email ?? "",
       password: "",
-      role: user.role ?? "user",
+      role: entry.role ?? "motorista",
+      tenantId: entry.tenantId ?? "",
     });
     setOpen(true);
   };
@@ -65,6 +95,11 @@ export default function Users() {
       return;
     }
 
+    if (user?.role === "superadmin" && !formData.tenantId) {
+      toast.error("Selecione um tenant");
+      return;
+    }
+
     try {
       if (editingId) {
         await updateMutation.mutateAsync({
@@ -72,6 +107,7 @@ export default function Users() {
           name: formData.name || undefined,
           email: formData.email,
           role: formData.role,
+          tenantId: formData.tenantId || undefined,
         });
         toast.success("Usuário atualizado");
       } else {
@@ -80,6 +116,7 @@ export default function Users() {
           email: formData.email,
           password: formData.password || undefined,
           role: formData.role,
+          tenantId: formData.tenantId || undefined,
         });
         toast.success("Usuário criado");
       }
@@ -105,20 +142,28 @@ export default function Users() {
     }
   };
 
+  const roleOptions: Array<{ value: Role; label: string }> = [
+    { value: "superadmin", label: "Superadmin" },
+    { value: "motorista", label: "Motorista" },
+    { value: "admin", label: "Admin" },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Usuários</h1>
-          <p className="text-muted-foreground mt-1">
-            Gerencie acessos administrativos e perfis do sistema
+          <p className="mt-1 text-muted-foreground">
+            {user?.role === "superadmin"
+              ? "Gerencie usuários do SaaS e associe cada conta ao tenant correto."
+              : "Gerencie os acessos do seu tenant, incluindo admins e motoristas."}
           </p>
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2" onClick={openCreate}>
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Novo Usuário
             </Button>
           </DialogTrigger>
@@ -126,18 +171,24 @@ export default function Users() {
             <DialogHeader>
               <DialogTitle>{editingId ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
               <DialogDescription>
-                A criação já abre a conta no Supabase Auth e cria o perfil interno.
+                A conta é criada no Supabase Auth e vinculada ao tenant selecionado.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Nome</Label>
-                <Input value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                <Input
+                  value={formData.name}
+                  onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                />
               </div>
               <div className="space-y-2">
                 <Label>E-mail</Label>
-                <Input value={formData.email} onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                <Input
+                  value={formData.email}
+                  onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                />
               </div>
               {!editingId ? (
                 <div className="space-y-2">
@@ -152,16 +203,44 @@ export default function Users() {
               ) : null}
               <div className="space-y-2">
                 <Label>Permissão</Label>
-                <Select value={formData.role} onValueChange={value => setFormData(prev => ({ ...prev, role: value as UserForm["role"] }))}>
+                <Select
+                  value={formData.role}
+                  onValueChange={value =>
+                    setFormData(prev => ({ ...prev, role: value as Role }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">Usuário</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    {roleOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+              {user?.role === "superadmin" ? (
+                <div className="space-y-2">
+                  <Label>Tenant</Label>
+                  <Select
+                    value={formData.tenantId}
+                    onValueChange={value => setFormData(prev => ({ ...prev, tenantId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um tenant" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tenants.map((entry: any) => (
+                        <SelectItem key={entry.id} value={entry.id}>
+                          {entry.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
 
               <Button onClick={submit} className="w-full">
                 Salvar
@@ -171,31 +250,39 @@ export default function Users() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <UsersIcon className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Total</p>
-                <p className="text-2xl font-semibold">{sortedUsers.length}</p>
+                <p className="text-2xl font-semibold">{visibleUsers.length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Admins</p>
+            <p className="text-sm text-muted-foreground">Superadmins</p>
             <p className="text-2xl font-semibold">
-              {sortedUsers.filter((user: any) => user.role === "admin").length}
+              {visibleUsers.filter((entry: any) => entry.role === "superadmin").length}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Usuários</p>
+            <p className="text-sm text-muted-foreground">Admins</p>
             <p className="text-2xl font-semibold">
-              {sortedUsers.filter((user: any) => user.role === "user").length}
+              {visibleUsers.filter((entry: any) => entry.role === "admin").length}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Motoristas</p>
+            <p className="text-2xl font-semibold">
+              {visibleUsers.filter((entry: any) => entry.role === "motorista").length}
             </p>
           </CardContent>
         </Card>
@@ -204,41 +291,63 @@ export default function Users() {
       <Card>
         <CardHeader>
           <CardTitle>Lista de Usuários</CardTitle>
-          <CardDescription>Controle perfis, permissões e contas de acesso</CardDescription>
+          <CardDescription>
+            Controle perfis, permissões e vínculo com tenant.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-muted-foreground">Nome</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">E-mail</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Perfil</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Login</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Ações</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Nome</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">E-mail</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Perfil</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Tenant</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Login</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedUsers.map((user: any) => (
-                  <tr key={user.id} className="border-b border-border hover:bg-muted/50">
-                    <td className="py-3 px-4 font-medium">{user.name || "-"}</td>
-                    <td className="py-3 px-4 text-muted-foreground">{user.email || "-"}</td>
-                    <td className="py-3 px-4 text-muted-foreground">{user.role}</td>
-                    <td className="py-3 px-4 text-muted-foreground">{user.loginMethod || "-"}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(user)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Editar
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => removeUser(user.id)}>
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Excluir
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {visibleUsers.map((entry: any) => {
+                  const canEdit = entry.role !== "superadmin" || user?.role === "superadmin";
+                  const tenantLabel = entry.tenantId
+                    ? tenantNameById.get(entry.tenantId) ?? entry.tenantId
+                    : "-";
+
+                  return (
+                    <tr key={entry.id} className="border-b border-border hover:bg-muted/50">
+                      <td className="px-4 py-3 font-medium">{entry.name || "-"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{entry.email || "-"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {ROLE_LABELS[entry.role as Role] ?? entry.role}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{tenantLabel}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{entry.loginMethod || "-"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
+                          {canEdit ? (
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(entry)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Editar
+                            </Button>
+                          ) : null}
+                          {entry.role !== "superadmin" ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => removeUser(entry.id)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

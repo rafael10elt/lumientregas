@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { lookupCep } from "@/lib/cep";
+import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { ArrowDown, ArrowUp, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -333,6 +334,14 @@ export default function Routes() {
                             </div>
                           </div>
                           <div className="text-right text-xs text-muted-foreground">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="mb-2"
+                              onClick={() => openGpsRoute(delivery.destinationAddress)}
+                            >
+                              Abrir GPS
+                            </Button>
                             <div>{delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "Sem agendamento"}</div>
                             <div>
                               {delivery.distanceFromPreviousKm != null
