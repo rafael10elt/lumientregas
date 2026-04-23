@@ -62,10 +62,12 @@ export type InsertUser = {
 
 export type Driver = {
   id: string;
+  tenantId: string;
+  userId: string | null;
   name: string;
   email: string | null;
   phone: string | null;
-  vehicle: string | null;
+  notes: string | null;
   status: DriverStatus;
   vehicles?: DriverVehicle[];
   createdAt: Date;
@@ -84,6 +86,7 @@ export type DriverVehicle = {
 };
 
 export type InsertDriverVehicle = {
+  tenantId?: string;
   driverId: string;
   model: string;
   plate: string;
@@ -148,10 +151,12 @@ export type InsertClientBase = {
 };
 
 export type InsertDriver = {
+  tenantId?: string;
+  userId?: string | null;
   name: string;
   email?: string | null;
   phone?: string | null;
-  vehicle?: string | null;
+  notes?: string | null;
   status?: DriverStatus;
   createdAt?: Date | string;
   updatedAt?: Date | string;

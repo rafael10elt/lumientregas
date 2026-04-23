@@ -1,21 +1,30 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { formatPhone, formatPlate } from "@/lib/format";
 import { openWhatsApp } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { MessageCircleMore, Pencil, Plus, Trash2, Truck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type DriverForm = {
   name: string;
   email: string;
   phone: string;
-  vehicle: string;
+  userId: string;
+  notes: string;
   status: "available" | "busy" | "offline";
 };
 
@@ -23,7 +32,8 @@ const emptyForm: DriverForm = {
   name: "",
   email: "",
   phone: "",
-  vehicle: "",
+  userId: "",
+  notes: "",
   status: "offline",
 };
 
@@ -45,16 +55,12 @@ export default function Drivers() {
     isPrimary: false,
   });
 
-  const { data: drivers = [], refetch } = trpc.drivers.list.useQuery();
+  const { data: drivers = [], refetch: refetchDrivers } = trpc.drivers.list.useQuery();
+  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: allVehicles = [], refetch: refetchVehicles } = trpc.driverVehicles.list.useQuery();
   const createMutation = trpc.drivers.create.useMutation();
   const updateMutation = trpc.drivers.update.useMutation();
   const deleteMutation = trpc.drivers.delete.useMutation();
-  const { data: vehicles = [], refetch: refetchVehicles } = trpc.driverVehicles.list.useQuery(
-    selectedDriverId ? { driverId: selectedDriverId } : undefined,
-    {
-      enabled: Boolean(selectedDriverId),
-    }
-  );
   const createVehicleMutation = trpc.driverVehicles.create.useMutation();
   const deleteVehicleMutation = trpc.driverVehicles.delete.useMutation();
 
@@ -62,6 +68,44 @@ export default function Drivers() {
     () => [...drivers].sort((a: any, b: any) => a.name.localeCompare(b.name)),
     [drivers]
   );
+
+  const tenantMotorists = useMemo(
+    () =>
+      [...users]
+        .filter((entry: any) => entry.role === "motorista")
+        .sort((a: any, b: any) => String(a.name ?? a.email ?? "").localeCompare(String(b.name ?? b.email ?? ""))),
+    [users]
+  );
+
+  const driverByUserId = useMemo(() => {
+    return new Map(tenantMotorists.map((entry: any) => [entry.id, entry]));
+  }, [tenantMotorists]);
+
+  const vehiclesByDriverId = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const vehicle of allVehicles as any[]) {
+      const current = map.get(vehicle.driverId) ?? [];
+      current.push(vehicle);
+      map.set(vehicle.driverId, current);
+    }
+    return map;
+  }, [allVehicles]);
+
+  const selectedDriver = useMemo(
+    () => sortedDrivers.find((entry: any) => entry.id === selectedDriverId) ?? null,
+    [selectedDriverId, sortedDrivers]
+  );
+
+  const selectedDriverVehicles = useMemo(
+    () => (selectedDriverId ? vehiclesByDriverId.get(selectedDriverId) ?? [] : []),
+    [selectedDriverId, vehiclesByDriverId]
+  );
+
+  useEffect(() => {
+    if (!selectedDriverId && sortedDrivers.length > 0) {
+      setSelectedDriverId(sortedDrivers[0].id);
+    }
+  }, [selectedDriverId, sortedDrivers]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -75,7 +119,8 @@ export default function Drivers() {
       name: driver.name ?? "",
       email: driver.email ?? "",
       phone: driver.phone ?? "",
-      vehicle: driver.vehicle ?? "",
+      userId: driver.userId ?? "",
+      notes: driver.notes ?? "",
       status: driver.status ?? "offline",
     });
     setOpen(true);
@@ -88,21 +133,31 @@ export default function Drivers() {
     }
 
     try {
+      const payload = {
+        name: formData.name,
+        email: formData.email || undefined,
+        phone: formData.phone || undefined,
+        userId: formData.userId || undefined,
+        notes: formData.notes || undefined,
+        status: formData.status,
+      };
+
       if (editingId) {
         await updateMutation.mutateAsync({
           id: editingId,
-          ...formData,
+          ...payload,
         });
         toast.success("Motorista atualizado");
       } else {
-        await createMutation.mutateAsync(formData);
+        await createMutation.mutateAsync(payload);
         toast.success("Motorista criado");
       }
 
       setOpen(false);
-      refetch();
-    } catch {
-      toast.error("Não foi possível salvar o motorista");
+      refetchDrivers();
+      refetchVehicles();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível salvar o motorista");
     }
   };
 
@@ -150,7 +205,8 @@ export default function Drivers() {
     try {
       await deleteMutation.mutateAsync(id);
       toast.success("Motorista excluído");
-      refetch();
+      refetchDrivers();
+      refetchVehicles();
     } catch {
       toast.error("Não foi possível excluir o motorista");
     }
@@ -161,15 +217,15 @@ export default function Drivers() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Motoristas</h1>
-          <p className="text-muted-foreground mt-1">
-            Cadastro, edição e disponibilidade da equipe
+          <p className="mt-1 text-muted-foreground">
+            Cadastre o perfil do motorista, vincule ao usuário correto e gerencie os veículos.
           </p>
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2" onClick={openCreate}>
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Novo Motorista
             </Button>
           </DialogTrigger>
@@ -177,14 +233,36 @@ export default function Drivers() {
             <DialogHeader>
               <DialogTitle>{editingId ? "Editar Motorista" : "Novo Motorista"}</DialogTitle>
               <DialogDescription>
-                Preencha os dados do motorista para usá-lo na roteirização.
+                Aqui você ajusta o perfil operacional do motorista. Os veículos são gerenciados na
+                seção abaixo.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Nome</Label>
-                <Input value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                <Input
+                  value={formData.name}
+                  onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Usuário vinculado</Label>
+                <Select
+                  value={formData.userId}
+                  onValueChange={value => setFormData(prev => ({ ...prev, userId: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um motorista cadastrado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenantMotorists.map((entry: any) => (
+                      <SelectItem key={entry.id} value={entry.id}>
+                        {entry.name || entry.email || entry.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>E-mail</Label>
@@ -211,12 +289,13 @@ export default function Drivers() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Veículo</Label>
-                <Input value={formData.vehicle} onChange={e => setFormData(prev => ({ ...prev, vehicle: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
                 <Label>Status</Label>
-                <Select value={formData.status} onValueChange={value => setFormData(prev => ({ ...prev, status: value as DriverForm["status"] }))}>
+                <Select
+                  value={formData.status}
+                  onValueChange={value =>
+                    setFormData(prev => ({ ...prev, status: value as DriverForm["status"] }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -226,6 +305,15 @@ export default function Drivers() {
                     <SelectItem value="offline">Offline</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Observações</Label>
+                <Textarea
+                  value={formData.notes}
+                  onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Ex: turno da manhã, preferências, observações operacionais..."
+                  rows={3}
+                />
               </div>
               <Button onClick={submit} className="w-full">
                 Salvar
@@ -268,84 +356,116 @@ export default function Drivers() {
       <Card>
         <CardHeader>
           <CardTitle>Lista de Motoristas</CardTitle>
-          <CardDescription>Use esta tela para gerir cadastro e disponibilidade</CardDescription>
+          <CardDescription>
+            Visualize todos os motoristas do tenant, o vínculo com o usuário e os veículos
+            principais.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-muted-foreground">Nome</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Contato</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Veículo</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Status</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Ações</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Nome</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Contato</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Usuário</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Veículos</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedDrivers.map((driver: any) => (
-                  <tr key={driver.id} className="border-b border-border hover:bg-muted/50">
-                    <td className="py-3 px-4 font-medium">{driver.name}</td>
-                    <td className="py-3 px-4 text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <span>{driver.email || driver.phone || "-"}</span>
-                        {driver.phone ? (
+                {sortedDrivers.map((driver: any) => {
+                  const driverVehicles = vehiclesByDriverId.get(driver.id) ?? [];
+                  const primaryVehicle =
+                    driverVehicles.find((vehicle: any) => vehicle.isPrimary) ?? driverVehicles[0];
+                  const linkedUser = driver.userId ? driverByUserId.get(driver.userId) : null;
+
+                  return (
+                    <tr key={driver.id} className="border-b border-border hover:bg-muted/50">
+                      <td className="px-4 py-3 font-medium">
+                        <div className="space-y-1">
+                          <div>{driver.name}</div>
+                          {driver.notes ? (
+                            <div className="max-w-xs text-xs text-muted-foreground">{driver.notes}</div>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span>{driver.email || driver.phone || "-"}</span>
+                          {driver.phone ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() =>
+                                openWhatsApp(driver.phone, `Olá ${driver.name}, tudo bem?`)
+                              }
+                              aria-label="Abrir WhatsApp"
+                            >
+                              <MessageCircleMore className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {linkedUser ? linkedUser.name || linkedUser.email || linkedUser.id : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {primaryVehicle ? (
+                          <div className="space-y-1">
+                            <div className="font-medium text-foreground">{primaryVehicle.model}</div>
+                            <div className="text-xs">
+                              {primaryVehicle.plate}
+                              {driverVehicles.length > 1 ? ` • ${driverVehicles.length} veículos` : ""}
+                            </div>
+                          </div>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Select
+                          value={driver.status}
+                          onValueChange={value =>
+                            updateMutation
+                              .mutateAsync({ id: driver.id, status: value as any })
+                              .then(() => refetchDrivers())
+                              .catch(() => toast.error("Erro ao atualizar status"))
+                          }
+                        >
+                          <SelectTrigger className="w-40">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="available">Disponível</SelectItem>
+                            <SelectItem value="busy">Ocupado</SelectItem>
+                            <SelectItem value="offline">Offline</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <span className="sr-only">{STATUS_LABELS[driver.status as DriverForm["status"]]}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(driver)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Editar
+                          </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() =>
-                              openWhatsApp(
-                                driver.phone,
-                                `Olá ${driver.name}, tudo bem?`
-                              )
-                            }
-                            aria-label="Abrir WhatsApp"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => removeDriver(driver.id)}
                           >
-                            <MessageCircleMore className="h-4 w-4" />
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
                           </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-muted-foreground">{driver.vehicle || "-"}</td>
-                    <td className="py-3 px-4">
-                      <Select
-                        value={driver.status}
-                        onValueChange={value =>
-                          updateMutation.mutateAsync({ id: driver.id, status: value as any })
-                            .then(() => refetch())
-                            .catch(() => toast.error("Erro ao atualizar status"))
-                        }
-                      >
-                        <SelectTrigger className="w-40">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="available">Disponível</SelectItem>
-                          <SelectItem value="busy">Ocupado</SelectItem>
-                          <SelectItem value="offline">Offline</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <span className="sr-only">{STATUS_LABELS[driver.status as DriverForm["status"]]}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(driver)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => removeDriver(driver.id)}
-                        >
-                          Excluir
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -356,7 +476,8 @@ export default function Drivers() {
         <CardHeader>
           <CardTitle>Veículos do Motorista</CardTitle>
           <CardDescription>
-            Cada motorista pode ter vários veículos cadastrados com modelo e placa.
+            Cada motorista pode ter vários veículos cadastrados. Selecione um motorista para
+            administrar a frota vinculada.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -364,7 +485,7 @@ export default function Drivers() {
             <div className="space-y-2 md:col-span-2">
               <Label>Motorista</Label>
               <Select
-                value={selectedDriverId ? String(selectedDriverId) : ""}
+                value={selectedDriverId ?? ""}
                 onValueChange={value => setSelectedDriverId(value)}
               >
                 <SelectTrigger>
@@ -378,6 +499,12 @@ export default function Drivers() {
                   ))}
                 </SelectContent>
               </Select>
+              {selectedDriver ? (
+                <p className="text-xs text-muted-foreground">
+                  {selectedDriver.name}
+                  {selectedDriver.userId ? " • perfil já vinculado ao usuário" : " • sem vínculo com usuário"}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Modelo</Label>
@@ -423,11 +550,11 @@ export default function Drivers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-muted-foreground">Modelo</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Placa</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Apelido</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Principal</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Ações</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Modelo</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Placa</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Apelido</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Principal</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -437,20 +564,20 @@ export default function Drivers() {
                       Selecione um motorista para ver os veículos
                     </td>
                   </tr>
-                ) : vehicles.length === 0 ? (
+                ) : selectedDriverVehicles.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-muted-foreground">
                       Nenhum veículo cadastrado para este motorista
                     </td>
                   </tr>
                 ) : (
-                  vehicles.map((vehicle: any) => (
+                  selectedDriverVehicles.map((vehicle: any) => (
                     <tr key={vehicle.id} className="border-b border-border hover:bg-muted/50">
-                      <td className="py-3 px-4 font-medium">{vehicle.model}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{vehicle.plate}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{vehicle.nickname || "-"}</td>
-                      <td className="py-3 px-4">{vehicle.isPrimary ? "Sim" : "Não"}</td>
-                      <td className="py-3 px-4">
+                      <td className="px-4 py-3 font-medium">{vehicle.model}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{vehicle.plate}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{vehicle.nickname || "-"}</td>
+                      <td className="px-4 py-3">{vehicle.isPrimary ? "Sim" : "Não"}</td>
+                      <td className="px-4 py-3">
                         <Button
                           variant="ghost"
                           size="sm"

@@ -190,11 +190,19 @@ export const appRouter = router({
           name: z.string(),
           email: z.string().optional(),
           phone: z.string().optional(),
-          vehicle: z.string().optional(),
+          userId: z.coerce.string().nullable().optional(),
+          notes: z.string().optional(),
+          status: z.enum(["available", "busy", "offline"]).optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
-        await createDriver(input, ctx.accessToken);
+        await createDriver(
+          {
+            ...input,
+            tenantId: ctx.tenant?.id ?? ctx.user?.tenantId ?? undefined,
+          },
+          ctx.accessToken
+        );
         return { success: true };
       }),
 
@@ -205,7 +213,8 @@ export const appRouter = router({
           name: z.string().optional(),
           email: z.string().optional(),
           phone: z.string().optional(),
-          vehicle: z.string().optional(),
+          userId: z.coerce.string().nullable().optional(),
+          notes: z.string().optional(),
           status: z.enum(["available", "busy", "offline"]).optional(),
         })
       )
@@ -232,6 +241,7 @@ export const appRouter = router({
       .input(
         z.object({
           driverId: z.coerce.string(),
+          tenantId: z.coerce.string().optional(),
           model: z.string(),
           plate: z.string(),
           nickname: z.string().optional(),
@@ -239,7 +249,13 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        await createDriverVehicle(input, ctx.accessToken);
+        await createDriverVehicle(
+          {
+            ...input,
+            tenantId: input.tenantId ?? ctx.tenant?.id ?? ctx.user?.tenantId ?? undefined,
+          },
+          ctx.accessToken
+        );
         return { success: true };
       }),
 

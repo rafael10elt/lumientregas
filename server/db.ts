@@ -78,10 +78,12 @@ function mapTenant(row: Record<string, any>): Tenant {
 function mapDriver(row: Record<string, any>): Driver {
   return {
     id: String(row.id),
+    tenantId: String(row.tenantId),
+    userId: row.userId ?? null,
     name: String(row.name),
     email: row.email ?? null,
     phone: row.phone ?? null,
-    vehicle: row.vehicle ?? null,
+    notes: row.notes ?? null,
     status: row.status,
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,

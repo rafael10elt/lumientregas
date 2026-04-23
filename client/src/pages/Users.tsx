@@ -153,6 +153,7 @@ export default function Users() {
           { value: "admin", label: "Admin" },
           { value: "motorista", label: "Motorista" },
         ];
+  const isSuperadmin = user?.role === "superadmin";
 
   return (
     <div className="space-y-6">
@@ -258,7 +259,7 @@ export default function Users() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className={`grid gap-4 ${isSuperadmin ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -270,14 +271,16 @@ export default function Users() {
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Superadmins</p>
-            <p className="text-2xl font-semibold">
-              {visibleUsers.filter((entry: any) => entry.role === "superadmin").length}
-            </p>
-          </CardContent>
-        </Card>
+        {isSuperadmin ? (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">Superadmins</p>
+              <p className="text-2xl font-semibold">
+                {visibleUsers.filter((entry: any) => entry.role === "superadmin").length}
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Admins</p>
@@ -311,8 +314,12 @@ export default function Users() {
                   <th className="px-4 py-3 text-left text-muted-foreground">Nome</th>
                   <th className="px-4 py-3 text-left text-muted-foreground">E-mail</th>
                   <th className="px-4 py-3 text-left text-muted-foreground">Perfil</th>
-                  <th className="px-4 py-3 text-left text-muted-foreground">Tenant</th>
-                  <th className="px-4 py-3 text-left text-muted-foreground">Login</th>
+                  {isSuperadmin ? (
+                    <>
+                      <th className="px-4 py-3 text-left text-muted-foreground">Tenant</th>
+                      <th className="px-4 py-3 text-left text-muted-foreground">Login</th>
+                    </>
+                  ) : null}
                   <th className="px-4 py-3 text-left text-muted-foreground">Ações</th>
                 </tr>
               </thead>
@@ -330,8 +337,12 @@ export default function Users() {
                       <td className="px-4 py-3 text-muted-foreground">
                         {ROLE_LABELS[entry.role as Role] ?? entry.role}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{tenantLabel}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{entry.loginMethod || "-"}</td>
+                      {isSuperadmin ? (
+                        <>
+                          <td className="px-4 py-3 text-muted-foreground">{tenantLabel}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{entry.loginMethod || "-"}</td>
+                        </>
+                      ) : null}
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
                           {canEdit ? (
