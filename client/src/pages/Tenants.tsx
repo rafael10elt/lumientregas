@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatPhone, formatSlug } from "@/lib/format";
+import { openWhatsApp } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
-import { Building2, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { Building2, MessageCircleMore, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -328,7 +329,25 @@ export default function Tenants() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{tenant.status}</td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {tenant.contactEmail || tenant.contactPhone || "-"}
+                      <div className="flex items-center gap-2">
+                        <span>{tenant.contactEmail || tenant.contactPhone || "-"}</span>
+                        {tenant.contactPhone ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() =>
+                              openWhatsApp(
+                                tenant.contactPhone,
+                                `Olá ${tenant.contactName || tenant.name}, tudo bem?`
+                              )
+                            }
+                            aria-label="Abrir WhatsApp"
+                          >
+                            <MessageCircleMore className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">

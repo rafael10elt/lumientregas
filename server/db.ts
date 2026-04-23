@@ -33,6 +33,15 @@ function removeUndefined<T extends Record<string, unknown>>(value: T): Partial<T
   ) as Partial<T>;
 }
 
+function pickField<T>(row: Record<string, any>, ...keys: string[]): T | undefined {
+  for (const key of keys) {
+    if (row[key] !== undefined) {
+      return row[key] as T;
+    }
+  }
+  return undefined;
+}
+
 function mapUser(row: Record<string, any>): User {
   return {
     id: String(row.id),
@@ -52,17 +61,17 @@ function mapUser(row: Record<string, any>): User {
 function mapTenant(row: Record<string, any>): Tenant {
   return {
     id: String(row.id),
-    name: String(row.name),
-    slug: String(row.slug),
-    contactName: row.contactName ?? null,
-    contactEmail: row.contactEmail ?? null,
-    contactPhone: row.contactPhone ?? null,
-    status: row.status,
-    paymentStatus: row.paymentStatus,
-    paymentDueAt: toDate(row.paymentDueAt),
-    notes: row.notes ?? null,
-    createdAt: toDate(row.createdAt)!,
-    updatedAt: toDate(row.updatedAt)!,
+    name: String(pickField<string>(row, "name") ?? ""),
+    slug: String(pickField<string>(row, "slug") ?? ""),
+    contactName: pickField<string | null>(row, "contactName", "contactname") ?? null,
+    contactEmail: pickField<string | null>(row, "contactEmail", "contactemail") ?? null,
+    contactPhone: pickField<string | null>(row, "contactPhone", "contactphone") ?? null,
+    status: pickField(row, "status") as Tenant["status"],
+    paymentStatus: pickField(row, "paymentStatus", "paymentstatus") as Tenant["paymentStatus"],
+    paymentDueAt: toDate(pickField<string | Date | null>(row, "paymentDueAt", "paymentdueat")),
+    notes: pickField<string | null>(row, "notes") ?? null,
+    createdAt: toDate(pickField<string | Date>(row, "createdAt", "createdat"))!,
+    updatedAt: toDate(pickField<string | Date>(row, "updatedAt", "updatedat"))!,
   };
 }
 

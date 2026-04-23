@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatPhone, formatPlate } from "@/lib/format";
+import { openWhatsApp } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
-import { Pencil, Plus, Trash2, Truck } from "lucide-react";
+import { MessageCircleMore, Pencil, Plus, Trash2, Truck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -285,7 +286,27 @@ export default function Drivers() {
                 {sortedDrivers.map((driver: any) => (
                   <tr key={driver.id} className="border-b border-border hover:bg-muted/50">
                     <td className="py-3 px-4 font-medium">{driver.name}</td>
-                    <td className="py-3 px-4 text-muted-foreground">{driver.email || driver.phone || "-"}</td>
+                    <td className="py-3 px-4 text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <span>{driver.email || driver.phone || "-"}</span>
+                        {driver.phone ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() =>
+                              openWhatsApp(
+                                driver.phone,
+                                `Olá ${driver.name}, tudo bem?`
+                              )
+                            }
+                            aria-label="Abrir WhatsApp"
+                          >
+                            <MessageCircleMore className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="py-3 px-4 text-muted-foreground">{driver.vehicle || "-"}</td>
                     <td className="py-3 px-4">
                       <Select
