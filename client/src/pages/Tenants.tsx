@@ -178,9 +178,10 @@ export default function Tenants() {
               <div className="space-y-2">
                 <Label>E-mail</Label>
                 <Input
-                  type="email"
+                  type="text"
                   value={formData.contactEmail}
                   onChange={e => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
+                  inputMode="email"
                   autoComplete="email"
                 />
               </div>

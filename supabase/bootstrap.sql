@@ -225,6 +225,7 @@ language sql
 stable
 security definer
 set search_path = public
+set row_security = off
 as $$
   select exists (
     select 1
@@ -232,6 +233,34 @@ as $$
     where u."authUserId" = auth.uid()
       and u.role = 'superadmin'
   );
+$$;
+
+create or replace function public.current_user_role()
+returns public.user_role
+language sql
+stable
+security definer
+set search_path = public
+set row_security = off
+as $$
+  select u.role
+  from public.users u
+  where u."authUserId" = auth.uid()
+  limit 1;
+$$;
+
+create or replace function public.current_user_tenant_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+set row_security = off
+as $$
+  select u."tenantId"
+  from public.users u
+  where u."authUserId" = auth.uid()
+  limit 1;
 $$;
 
 create or replace function public.list_tenants()
@@ -410,8 +439,8 @@ create policy "superadmin can manage tenants"
 on public.tenants
 for all
 to authenticated
-using (exists (select 1 from public.users u where u."authUserId" = auth.uid() and u.role = 'superadmin'))
-with check (exists (select 1 from public.users u where u."authUserId" = auth.uid() and u.role = 'superadmin'));
+using (public.current_user_role() = 'superadmin')
+with check (public.current_user_role() = 'superadmin');
 
 create policy "authenticated can read tenants"
 on public.tenants
@@ -424,12 +453,9 @@ on public.users
 for select
 to authenticated
 using (
-  exists (
-    select 1
-    from public.users me
-    where me."authUserId" = auth.uid()
-      and (me.role = 'superadmin' or me."tenantId" = "tenantId")
-  )
+  public.current_user_role() = 'superadmin'
+  or public.current_user_tenant_id() = "tenantId"
+  or auth.uid() = "authUserId"
 );
 
 create policy "tenant users can manage themselves"
@@ -437,86 +463,86 @@ on public.users
 for all
 to authenticated
 using (
-  exists (
-    select 1
-    from public.users me
-    where me."authUserId" = auth.uid()
-      and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId" or me."authUserId" = auth.uid())
+  public.current_user_role() = 'superadmin'
+  or (
+    public.current_user_role() = 'admin'
+    and public.current_user_tenant_id() = "tenantId"
   )
+  or auth.uid() = "authUserId"
 )
 with check (
-  exists (
-    select 1
-    from public.users me
-    where me."authUserId" = auth.uid()
-      and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId" or me."authUserId" = auth.uid())
+  public.current_user_role() = 'superadmin'
+  or (
+    public.current_user_role() = 'admin'
+    and public.current_user_tenant_id() = "tenantId"
   )
+  or auth.uid() = "authUserId"
 );
 
 create policy "tenant users can read clients"
 on public.clients
 for select
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or public.current_user_tenant_id() = "tenantId");
 
 create policy "tenant users can manage clients"
 on public.clients
 for all
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")))
-with check (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
+with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
 
 create policy "tenant users can read bases"
 on public.client_bases
 for select
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or public.current_user_tenant_id() = "tenantId");
 
 create policy "tenant users can manage bases"
 on public.client_bases
 for all
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")))
-with check (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
+with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
 
 create policy "tenant users can read drivers"
 on public.drivers
 for select
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or public.current_user_tenant_id() = "tenantId");
 
 create policy "tenant users can manage drivers"
 on public.drivers
 for all
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")))
-with check (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
+with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
 
 create policy "tenant users can read driver vehicles"
 on public.driver_vehicles
 for select
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or public.current_user_tenant_id() = "tenantId");
 
 create policy "tenant users can manage driver vehicles"
 on public.driver_vehicles
 for all
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")))
-with check (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
+with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
 
 create policy "tenant users can read deliveries"
 on public.deliveries
 for select
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or public.current_user_tenant_id() = "tenantId");
 
 create policy "tenant users can manage deliveries"
 on public.deliveries
 for all
 to authenticated
-using (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")))
-with check (exists (select 1 from public.users me where me."authUserId" = auth.uid() and (me.role = 'superadmin' or me.role = 'admin' and me."tenantId" = "tenantId")));
+using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
+with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
 
 create trigger set_tenants_updated_at
 before update on public.tenants

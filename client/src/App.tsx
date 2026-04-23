@@ -91,6 +91,26 @@ function Router() {
     }
   }, [location, setLocation, user]);
 
+  if (location === "/login") {
+    if (loading) {
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+
+    if (isAuthenticated) {
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+
+    return <Login />;
+  }
+
   if (location === "/trocar-senha") {
     return <ResetPassword />;
   }
@@ -128,7 +148,6 @@ function Router() {
         <Route path="/driver" component={DriverPortal} />
         <Route path="/analytics" component={Analytics} />
         <Route path="/tenants" component={Tenants} />
-        <Route path="/login" component={Login} />
         <Route component={NotFound} />
       </Switch>
     </DashboardLayout>

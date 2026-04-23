@@ -6,9 +6,11 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { supabase } from "./lib/supabase";
+import { toast } from "sonner";
 import "./index.css";
 
 const queryClient = new QueryClient();
+const recentErrorToasts = new Map<string, number>();
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
@@ -21,11 +23,21 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   window.location.href = "/login";
 };
 
+const toastApiError = (error: unknown, source: string) => {
+  if (!(error instanceof Error)) return;
+  const key = `${source}:${error.message}`;
+  const now = Date.now();
+  const lastShown = recentErrorToasts.get(key) ?? 0;
+  if (now - lastShown < 5000) return;
+  recentErrorToasts.set(key, now);
+  toast.error(error.message || "Erro na aplicação");
+};
+
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.query.state.error;
     redirectToLoginIfUnauthorized(error);
-    console.error("[API Query Error]", error);
+    toastApiError(error, "query");
   }
 });
 
@@ -33,7 +45,7 @@ queryClient.getMutationCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.mutation.state.error;
     redirectToLoginIfUnauthorized(error);
-    console.error("[API Mutation Error]", error);
+    toastApiError(error, "mutation");
   }
 });
 
