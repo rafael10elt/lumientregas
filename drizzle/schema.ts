@@ -47,7 +47,7 @@ export type InsertTenant = {
 };
 
 export type User = {
-  id: string;
+  id: number;
   openId: string;
   authUserId: string | null;
   tenantId: string | null;
@@ -77,9 +77,13 @@ export type InsertUser = {
 };
 
 export type Driver = {
+<<<<<<< HEAD
   id: string;
   tenantId: string;
   userId: string | null;
+=======
+  id: number;
+>>>>>>> parent of f08e5f3 (up)
   name: string;
   email: string | null;
   phone: string | null;
@@ -102,9 +106,14 @@ export type InsertDriver = {
 };
 
 export type DriverVehicle = {
+<<<<<<< HEAD
   id: string;
   tenantId: string;
   driverId: string;
+=======
+  id: number;
+  driverId: number;
+>>>>>>> parent of f08e5f3 (up)
   model: string;
   plate: string;
   nickname: string | null;
@@ -114,8 +123,12 @@ export type DriverVehicle = {
 };
 
 export type InsertDriverVehicle = {
+<<<<<<< HEAD
   tenantId: string;
   driverId: string;
+=======
+  driverId: number;
+>>>>>>> parent of f08e5f3 (up)
   model: string;
   plate: string;
   nickname?: string | null;
@@ -124,6 +137,7 @@ export type InsertDriverVehicle = {
   updatedAt?: Date | string;
 };
 
+<<<<<<< HEAD
 export type Client = {
   id: string;
   tenantId: string;
@@ -164,17 +178,30 @@ export type InsertClientBase = {
   name: string;
   isDefault?: boolean;
 } & Partial<AddressFields> & {
+=======
+export type InsertDriver = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  vehicle?: string | null;
+  status?: DriverStatus;
+>>>>>>> parent of f08e5f3 (up)
   createdAt?: Date | string;
   updatedAt?: Date | string;
 };
 
 export type Delivery = {
+<<<<<<< HEAD
   id: string;
   tenantId: string;
   clientId: string | null;
+=======
+  id: number;
+>>>>>>> parent of f08e5f3 (up)
   clientName: string;
   baseId: string | null;
   originPostalCode: string | null;
+<<<<<<< HEAD
   originStreet: string | null;
   originNumber: string | null;
   originNeighborhood: string | null;
@@ -198,6 +225,17 @@ export type Delivery = {
   destinationAddress: string;
   driverId: string | null;
   createdByUserId: string | null;
+=======
+  originAddress: string;
+  originLat: string | null;
+  originLng: string | null;
+  destinationPostalCode: string | null;
+  destinationAddress: string;
+  destinationLat: string | null;
+  destinationLng: string | null;
+  driverId: number | null;
+  createdByUserId: number | null;
+>>>>>>> parent of f08e5f3 (up)
   status: DeliveryStatus;
   scheduledAt: Date | null;
   notes: string | null;
@@ -209,11 +247,15 @@ export type Delivery = {
 };
 
 export type InsertDelivery = {
+<<<<<<< HEAD
   tenantId: string;
   clientId?: string | null;
+=======
+>>>>>>> parent of f08e5f3 (up)
   clientName: string;
   baseId?: string | null;
   originPostalCode?: string | null;
+<<<<<<< HEAD
   originStreet?: string | null;
   originNumber?: string | null;
   originNeighborhood?: string | null;
@@ -237,6 +279,17 @@ export type InsertDelivery = {
   destinationAddress: string;
   driverId?: string | null;
   createdByUserId?: string | null;
+=======
+  originAddress: string;
+  originLat?: string | null;
+  originLng?: string | null;
+  destinationPostalCode?: string | null;
+  destinationAddress: string;
+  destinationLat?: string | null;
+  destinationLng?: string | null;
+  driverId?: number | null;
+  createdByUserId?: number | null;
+>>>>>>> parent of f08e5f3 (up)
   status?: DeliveryStatus;
   scheduledAt?: Date | string | null;
   notes?: string | null;
