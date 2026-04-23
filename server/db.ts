@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   Client,
@@ -15,18 +14,6 @@ import type {
   InsertUser,
   Tenant,
   User,
-=======
-import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  type Delivery,
-  type Driver,
-  type DriverVehicle,
-  type InsertDelivery,
-  type InsertDriver,
-  type InsertDriverVehicle,
-  type InsertUser,
-  type User,
->>>>>>> parent of f08e5f3 (up)
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -63,7 +50,6 @@ function removeUndefined<T extends Record<string, unknown>>(value: T): Partial<T
 
 function normalizeTenant(row: Record<string, any>): Tenant {
   return {
-<<<<<<< HEAD
     ...row,
     id: String(row.id),
     createdAt: toDate(row.createdAt)!,
@@ -80,15 +66,6 @@ function normalizeUser(row: Record<string, any>): User {
     tenantName: row.tenantName ?? null,
     tenantStatus: row.tenantStatus ?? null,
     tenantPaymentStatus: row.tenantPaymentStatus ?? null,
-=======
-    id: Number(row.id),
-    openId: String(row.openId),
-    authUserId: row.authUserId ?? null,
-    name: row.name ?? null,
-    email: row.email ?? null,
-    loginMethod: row.loginMethod ?? null,
-    role: row.role,
->>>>>>> parent of f08e5f3 (up)
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
     lastSignedIn: toDate(row.lastSignedIn)!,
@@ -97,19 +74,10 @@ function normalizeUser(row: Record<string, any>): User {
 
 function normalizeDriver(row: Record<string, any>): Driver {
   return {
-<<<<<<< HEAD
     ...row,
     id: String(row.id),
     tenantId: String(row.tenantId),
     userId: row.userId == null ? null : String(row.userId),
-=======
-    id: Number(row.id),
-    name: String(row.name),
-    email: row.email ?? null,
-    phone: row.phone ?? null,
-    vehicle: row.vehicle ?? null,
-    status: row.status,
->>>>>>> parent of f08e5f3 (up)
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
   } as Driver;
@@ -117,18 +85,10 @@ function normalizeDriver(row: Record<string, any>): Driver {
 
 function normalizeDriverVehicle(row: Record<string, any>): DriverVehicle {
   return {
-<<<<<<< HEAD
     ...row,
     id: String(row.id),
     tenantId: String(row.tenantId),
     driverId: String(row.driverId),
-=======
-    id: Number(row.id),
-    driverId: Number(row.driverId),
-    model: String(row.model),
-    plate: String(row.plate),
-    nickname: row.nickname ?? null,
->>>>>>> parent of f08e5f3 (up)
     isPrimary: Boolean(row.isPrimary),
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
@@ -137,7 +97,6 @@ function normalizeDriverVehicle(row: Record<string, any>): DriverVehicle {
 
 function normalizeClient(row: Record<string, any>): Client {
   return {
-<<<<<<< HEAD
     ...row,
     id: String(row.id),
     tenantId: String(row.tenantId),
@@ -173,21 +132,6 @@ function normalizeDelivery(row: Record<string, any>): Delivery {
     destinationLongitude: toNumber(row.destinationLongitude),
     driverId: row.driverId == null ? null : String(row.driverId),
     createdByUserId: row.createdByUserId == null ? null : String(row.createdByUserId),
-=======
-    id: Number(row.id),
-    clientName: String(row.clientName),
-    originPostalCode: row.originPostalCode ?? null,
-    originAddress: String(row.originAddress),
-    originLat: row.originLat ?? null,
-    originLng: row.originLng ?? null,
-    destinationPostalCode: row.destinationPostalCode ?? null,
-    destinationAddress: String(row.destinationAddress),
-    destinationLat: row.destinationLat ?? null,
-    destinationLng: row.destinationLng ?? null,
-    driverId: row.driverId == null ? null : Number(row.driverId),
-    createdByUserId: row.createdByUserId == null ? null : Number(row.createdByUserId),
-    status: row.status,
->>>>>>> parent of f08e5f3 (up)
     routeOrder: row.routeOrder == null ? null : Number(row.routeOrder),
     scheduledAt: toDate(row.scheduledAt),
     createdAt: toDate(row.createdAt)!,
@@ -195,7 +139,6 @@ function normalizeDelivery(row: Record<string, any>): Delivery {
   } as Delivery;
 }
 
-<<<<<<< HEAD
 export async function getDb() {
   if (_db) return _db;
 
@@ -228,10 +171,6 @@ export async function getTenants() {
   const { data, error } = await db.from("tenants").select("*").order("createdAt", { ascending: false });
   if (error) throw error;
   return (data ?? []).map(normalizeTenant);
-=======
-function clientFor(accessToken?: string | null): SupabaseClient {
-  return accessToken ? createSupabaseAnonClient(accessToken) : createSupabaseAdminClient();
->>>>>>> parent of f08e5f3 (up)
 }
 
 export async function createTenantRecord(tenant: InsertTenant) {
@@ -290,20 +229,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     return;
   }
 
-<<<<<<< HEAD
   const values: Record<string, unknown> = {
     openId: user.openId,
-=======
-  const db = createSupabaseAdminClient();
-  const values = removeUndefined({
-    openId: input.openId,
-    authUserId: input.authUserId,
-    name: input.name ?? null,
-    email: input.email ?? null,
-    loginMethod: input.loginMethod ?? "supabase",
-    role: input.role ?? "user",
-    lastSignedIn: toIsoString(input.lastSignedIn) ?? new Date().toISOString(),
->>>>>>> parent of f08e5f3 (up)
     updatedAt: new Date().toISOString(),
   };
 
@@ -362,7 +289,6 @@ export async function getUserById(id: string) {
   return data ? normalizeUser(data) : undefined;
 }
 
-<<<<<<< HEAD
 export async function getUsers(tenantId?: string) {
   const db = await getDb();
   if (!db) return [];
@@ -381,13 +307,6 @@ export async function updateUser(id: string, updates: Partial<InsertUser>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-=======
-export async function updateUser(
-  id: number,
-  updates: Partial<Pick<InsertUser, "name" | "email" | "loginMethod"> & { role: User["role"] }>
-) {
-  const db = createSupabaseAdminClient();
->>>>>>> parent of f08e5f3 (up)
   const { error } = await db
     .from("users")
     .update(
@@ -401,7 +320,6 @@ export async function updateUser(
   if (error) throw error;
 }
 
-<<<<<<< HEAD
 export async function deleteUserAccount(id: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -514,50 +432,6 @@ export async function deleteClientBase(id: string) {
 export async function getDrivers(tenantId?: string) {
   const db = await getDb();
   if (!db) return [];
-=======
-export async function deleteUserAccount(id: number) {
-  const db = createSupabaseAdminClient();
-  const { data, error } = await db
-    .from("users")
-    .select("authUserId")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data?.authUserId) {
-    const { error: deleteProfileError } = await db.from("users").delete().eq("id", id);
-    if (deleteProfileError) {
-      throw deleteProfileError;
-    }
-    return;
-  }
-
-  const { error: authError } = await db.auth.admin.deleteUser(data.authUserId);
-  if (authError) {
-    throw authError;
-  }
-
-  const { error: deleteProfileError } = await db.from("users").delete().eq("id", id);
-  if (deleteProfileError) {
-    throw deleteProfileError;
-  }
-}
-
-export async function getDeliveries(
-  filters?: {
-    status?: string;
-    driverId?: number;
-    startDate?: Date;
-    endDate?: Date;
-  },
-  accessToken?: string | null
-) {
-  const db = clientFor(accessToken);
-  let query = db.from("deliveries").select("*");
->>>>>>> parent of f08e5f3 (up)
 
   let query = db.from("drivers").select("*");
   if (tenantId) query = query.eq("tenantId", tenantId);
@@ -567,101 +441,9 @@ export async function getDeliveries(
   return (data ?? []).map(normalizeDriver);
 }
 
-<<<<<<< HEAD
 export async function getDriverById(id: string) {
   const db = await getDb();
   if (!db) return undefined;
-=======
-export async function getDeliveryById(id: number, accessToken?: string | null) {
-  const db = clientFor(accessToken);
-  const { data, error } = await db.from("deliveries").select("*").eq("id", id).maybeSingle();
-  if (error) throw error;
-  return data ? mapDelivery(data) : undefined;
-}
-
-export async function createDelivery(delivery: InsertDelivery, accessToken?: string | null) {
-  const db = clientFor(accessToken);
-  const { data, error } = await db
-    .from("deliveries")
-    .insert(
-      removeUndefined({
-        ...delivery,
-        originPostalCode: delivery.originPostalCode ?? null,
-        scheduledAt: toIsoString(delivery.scheduledAt),
-        createdAt: toIsoString(delivery.createdAt),
-        updatedAt: toIsoString(delivery.updatedAt),
-        destinationPostalCode: delivery.destinationPostalCode ?? null,
-        routeOrder: delivery.routeOrder ?? null,
-      })
-    )
-    .select("*")
-    .single();
-
-  if (error) throw error;
-  return data ? mapDelivery(data) : null;
-}
-
-export async function updateDelivery(
-  id: number,
-  updates: Partial<InsertDelivery>,
-  accessToken?: string | null
-) {
-  const db = clientFor(accessToken);
-  const normalizedRouteOrder =
-    updates.routeOrder === undefined ? undefined : updates.routeOrder;
-  const { error } = await db
-    .from("deliveries")
-    .update(
-      removeUndefined({
-        ...updates,
-        routeOrder: normalizedRouteOrder,
-        scheduledAt: toIsoString(updates.scheduledAt),
-        updatedAt: new Date().toISOString(),
-      })
-    )
-    .eq("id", id);
-
-  if (error) throw error;
-}
-
-export async function deleteDelivery(id: number, accessToken?: string | null) {
-  const db = clientFor(accessToken);
-  const { error } = await db.from("deliveries").delete().eq("id", id);
-  if (error) throw error;
-}
-
-export async function updateDeliveriesOrder(
-  updates: Array<{ id: number; routeOrder: number; driverId?: number | null; scheduledAt?: Date | string | null }>,
-  accessToken?: string | null
-) {
-  const db = clientFor(accessToken);
-  for (const item of updates) {
-    const { error } = await db
-      .from("deliveries")
-      .update({
-        routeOrder: item.routeOrder,
-        ...(item.driverId !== undefined ? { driverId: item.driverId } : {}),
-        ...(item.scheduledAt !== undefined ? { scheduledAt: toIsoString(item.scheduledAt) } : {}),
-        updatedAt: new Date().toISOString(),
-      })
-      .eq("id", item.id);
-
-    if (error) {
-      throw error;
-    }
-  }
-}
-
-export async function getDrivers(accessToken?: string | null) {
-  const db = clientFor(accessToken);
-  const { data, error } = await db.from("drivers").select("*").order("name", { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map(mapDriver);
-}
-
-export async function getDriverById(id: number, accessToken?: string | null) {
-  const db = clientFor(accessToken);
->>>>>>> parent of f08e5f3 (up)
   const { data, error } = await db.from("drivers").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
   return data ? normalizeDriver(data) : undefined;
@@ -687,18 +469,9 @@ export async function createDriver(driver: InsertDriver) {
   return data ? normalizeDriver(data) : null;
 }
 
-<<<<<<< HEAD
 export async function updateDriver(id: string, updates: Partial<InsertDriver>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-=======
-export async function updateDriver(
-  id: number,
-  updates: Partial<InsertDriver>,
-  accessToken?: string | null
-) {
-  const db = clientFor(accessToken);
->>>>>>> parent of f08e5f3 (up)
   const { error } = await db
     .from("drivers")
     .update(removeUndefined({ ...updates, updatedAt: new Date().toISOString() }))
@@ -706,27 +479,17 @@ export async function updateDriver(
   if (error) throw error;
 }
 
-<<<<<<< HEAD
 export async function deleteDriver(id: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-=======
-export async function deleteDriver(id: number, accessToken?: string | null) {
-  const db = clientFor(accessToken);
->>>>>>> parent of f08e5f3 (up)
   const { error } = await db.from("drivers").delete().eq("id", id);
   if (error) throw error;
 }
 
-<<<<<<< HEAD
 export async function getDriverVehicles(tenantId?: string, driverId?: string) {
   const db = await getDb();
   if (!db) return [];
 
-=======
-export async function getDriverVehicles(driverId?: number) {
-  const db = createSupabaseAdminClient();
->>>>>>> parent of f08e5f3 (up)
   let query = db.from("driver_vehicles").select("*");
   if (tenantId) query = query.eq("tenantId", tenantId);
   if (driverId) query = query.eq("driverId", driverId);
@@ -762,18 +525,9 @@ export async function createDriverVehicle(vehicle: InsertDriverVehicle) {
   return data ? normalizeDriverVehicle(data) : null;
 }
 
-<<<<<<< HEAD
 export async function updateDriverVehicle(id: string, updates: Partial<InsertDriverVehicle>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-=======
-export async function updateDriverVehicle(
-  id: number,
-  updates: Partial<InsertDriverVehicle>,
-  accessToken?: string | null
-) {
-  const db = clientFor(accessToken);
->>>>>>> parent of f08e5f3 (up)
   const { error } = await db
     .from("driver_vehicles")
     .update(removeUndefined({ ...updates, updatedAt: new Date().toISOString() }))
@@ -781,14 +535,9 @@ export async function updateDriverVehicle(
   if (error) throw error;
 }
 
-<<<<<<< HEAD
 export async function deleteDriverVehicle(id: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-=======
-export async function deleteDriverVehicle(id: number, accessToken?: string | null) {
-  const db = clientFor(accessToken);
->>>>>>> parent of f08e5f3 (up)
   const { error } = await db.from("driver_vehicles").delete().eq("id", id);
   if (error) throw error;
 }
