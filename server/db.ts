@@ -258,6 +258,21 @@ export async function getUserByOpenId(openId: string) {
   return data ? mapUser(data) : undefined;
 }
 
+export async function hasSuperadminUser() {
+  const db = createSupabaseAdminClient();
+  const { data, error } = await db
+    .from("users")
+    .select("id")
+    .eq("role", "superadmin")
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).length > 0;
+}
+
 export async function getUsers(accessToken?: string | null) {
   const db = clientFor(accessToken);
   const { data, error } = await db

@@ -1,6 +1,6 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { Tenant, User } from "../../drizzle/schema";
-import { ensureUserProfile, getTenantById, getUserByAuthUserId } from "../db";
+import { ensureUserProfile, getTenantById, getUserByAuthUserId, hasSuperadminUser, updateUser } from "../db";
 import { createSupabaseAnonClient } from "./supabase";
 
 export type TrpcContext = {
@@ -35,6 +35,7 @@ export async function createContext(
       const { data, error } = await supabase.auth.getUser(accessToken);
       if (!error && data.user?.id) {
         user = (await getUserByAuthUserId(data.user.id)) ?? null;
+        const superadminExists = await hasSuperadminUser();
         if (!user) {
           await ensureUserProfile({
             openId: data.user.id,
@@ -42,7 +43,11 @@ export async function createContext(
             name: data.user.user_metadata?.full_name ?? data.user.user_metadata?.name ?? data.user.email ?? null,
             email: data.user.email ?? null,
             loginMethod: "supabase",
+            role: superadminExists ? "motorista" : "superadmin",
           });
+          user = (await getUserByAuthUserId(data.user.id)) ?? null;
+        } else if (user.role !== "superadmin" && !user.tenantId && !superadminExists) {
+          await updateUser(user.id, { role: "superadmin" });
           user = (await getUserByAuthUserId(data.user.id)) ?? null;
         }
 
