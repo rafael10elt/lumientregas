@@ -187,7 +187,7 @@ function DriverDeliveryCard({
                     <div key={event.id} className="rounded-lg border border-border/60 bg-background p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="font-medium text-foreground">
-                          {event.fromStatus || "inicio"} -> {event.toStatus}
+                          {event.fromStatus || "inicio"} {" -> "} {event.toStatus}
                         </div>
                         <div className="text-xs text-muted-foreground">{formatDateTime(event.recordedAt)}</div>
                       </div>
