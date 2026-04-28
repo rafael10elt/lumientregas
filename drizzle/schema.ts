@@ -77,22 +77,52 @@ export type Driver = {
 
 export type DriverVehicle = {
   id: string;
-  driverId: string;
+  tenantId: string;
+  currentDriverId: string | null;
   model: string;
   plate: string;
   nickname: string | null;
   isPrimary: boolean;
+  lastAssignedAt: Date | null;
+  lastUnassignedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
 
 export type InsertDriverVehicle = {
   tenantId?: string;
-  driverId: string;
+  currentDriverId?: string | null;
   model: string;
   plate: string;
   nickname?: string | null;
   isPrimary?: boolean;
+  lastAssignedAt?: Date | string | null;
+  lastUnassignedAt?: Date | string | null;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
+
+export type VehicleAssignment = {
+  id: string;
+  tenantId: string;
+  vehicleId: string;
+  driverId: string;
+  assignedByUserId: string | null;
+  assignedAt: Date;
+  unassignedAt: Date | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type InsertVehicleAssignment = {
+  tenantId?: string;
+  vehicleId: string;
+  driverId: string;
+  assignedByUserId?: string | null;
+  assignedAt?: Date | string;
+  unassignedAt?: Date | string | null;
+  notes?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
 };
@@ -135,6 +165,25 @@ export type ClientBase = {
   updatedAt: Date;
 };
 
+export type OperationalBase = {
+  id: string;
+  tenantId: string;
+  name: string;
+  postalCode: string | null;
+  street: string;
+  number: string | null;
+  neighborhood: string | null;
+  city: string;
+  state: string;
+  complement: string | null;
+  reference: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  isPrimary: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type InsertClientBase = {
   clientId: string;
   name: string;
@@ -163,11 +212,30 @@ export type InsertDriver = {
   updatedAt?: Date | string;
 };
 
+export type InsertOperationalBase = {
+  tenantId?: string;
+  name: string;
+  postalCode?: string | null;
+  street: string;
+  number?: string | null;
+  neighborhood?: string | null;
+  city: string;
+  state: string;
+  complement?: string | null;
+  reference?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  isPrimary?: boolean;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
+
 export type Delivery = {
   id: string;
   clientId: string | null;
   baseId: string | null;
   clientName: string;
+  clientPhone: string | null;
   originPostalCode: string | null;
   originAddress: string;
   originStreet: string | null;
@@ -219,9 +287,11 @@ export type DeliveryEvent = {
 };
 
 export type InsertDelivery = {
+  tenantId?: string;
   clientId?: string | null;
   baseId?: string | null;
   clientName: string;
+  clientPhone?: string | null;
   originPostalCode?: string | null;
   originAddress: string;
   originStreet?: string | null;

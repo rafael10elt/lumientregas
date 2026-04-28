@@ -8,7 +8,7 @@ import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { ArrowDown, ArrowUp, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type RoutePlanItem = any & {
@@ -19,6 +19,7 @@ type RoutePlanItem = any & {
 type RoutePlans = Record<string, RoutePlanItem[]>;
 
 export default function Routes() {
+  const [selectedBaseId, setSelectedBaseId] = useState<string>("auto");
   const [basePostalCode, setBasePostalCode] = useState("");
   const [baseAddress, setBaseAddress] = useState("Rua Principal, 1 - Centro");
   const [selectedDriverId, setSelectedDriverId] = useState<string>("all");
@@ -44,8 +45,14 @@ export default function Routes() {
     endDate: todayEnd,
   });
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const { data: bases = [] } = trpc.operationalBases.list.useQuery();
   const optimizeMutation = trpc.routes.optimize.useMutation();
   const reorderMutation = trpc.deliveries.reorder.useMutation();
+
+  const selectedBase = useMemo(
+    () => (selectedBaseId === "auto" ? bases.find((base: any) => base.isPrimary) ?? bases[0] : bases.find((base: any) => String(base.id) === selectedBaseId) ?? null),
+    [bases, selectedBaseId]
+  );
 
   const openDeliveries = useMemo(
     () => deliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"),
@@ -88,11 +95,26 @@ export default function Routes() {
     }
   };
 
+  const syncBaseFromSelection = (base: any) => {
+    if (!base) return;
+    setBasePostalCode(base.postalCode || "");
+    setBaseAddress(
+      [base.street, base.number, base.neighborhood, base.city, base.state].filter(Boolean).join(", ")
+    );
+  };
+
+  useEffect(() => {
+    if (selectedBase) {
+      syncBaseFromSelection(selectedBase);
+    }
+  }, [selectedBase]);
+
   const generateRoute = async (driverId: string) => {
     try {
       const data = await optimizeMutation.mutateAsync({
         driverId,
-        baseAddress,
+        baseId: selectedBase?.id,
+        baseAddress: baseAddress || undefined,
         scheduledAt: todayStart,
       });
 
@@ -192,10 +214,44 @@ export default function Routes() {
         <CardHeader>
           <CardTitle>Base operacional</CardTitle>
           <CardDescription>
-            Informe o CEP da origem para preencher o endereco completo automaticamente.
+            Escolha a base principal do dia ou ajuste manualmente a origem da rota.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-[1fr,2fr,auto]">
+          <div className="space-y-2 md:col-span-3">
+            <Label>Base do dia</Label>
+            <Select
+              value={selectedBaseId}
+              onValueChange={value => {
+                setSelectedBaseId(value);
+                if (value === "auto") {
+                  const primary = bases.find((base: any) => base.isPrimary) ?? bases[0];
+                  if (primary) syncBaseFromSelection(primary);
+                  return;
+                }
+                const base = bases.find((entry: any) => String(entry.id) === value);
+                syncBaseFromSelection(base);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Escolha a base principal" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Base principal automática</SelectItem>
+                {bases.map((base: any) => (
+                  <SelectItem key={base.id} value={String(base.id)}>
+                    {base.name}
+                    {base.isPrimary ? " (principal)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedBase ? (
+              <p className="text-xs text-muted-foreground">
+                {selectedBase.street}, {selectedBase.number || "-"} - {selectedBase.city}/{selectedBase.state}
+              </p>
+            ) : null}
+          </div>
           <div className="space-y-2">
             <Label>CEP da base</Label>
             <Input

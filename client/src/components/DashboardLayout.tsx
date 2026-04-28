@@ -27,6 +27,7 @@ import {
   Package2,
   PanelLeft,
   Shield,
+  MapPinned,
   Truck,
   TrendingUp,
   UserCog,
@@ -41,6 +42,7 @@ import { BrandMark } from "./BrandMark";
 const operationalMenuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Package2, label: "Entregas", path: "/deliveries" },
+  { icon: MapPinned, label: "Bases", path: "/bases" },
   { icon: CarFront, label: "Motoristas", path: "/drivers" },
   { icon: UserCog, label: "Usuários", path: "/users" },
   { icon: Truck, label: "Rotas", path: "/routes" },

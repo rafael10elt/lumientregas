@@ -48,7 +48,9 @@ export default function Drivers() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<DriverForm>(emptyForm);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [vehicleForm, setVehicleForm] = useState({
+    currentDriverId: "",
     model: "",
     plate: "",
     nickname: "",
@@ -58,10 +60,15 @@ export default function Drivers() {
   const { data: drivers = [], refetch: refetchDrivers } = trpc.drivers.list.useQuery();
   const { data: users = [] } = trpc.users.list.useQuery();
   const { data: allVehicles = [], refetch: refetchVehicles } = trpc.driverVehicles.list.useQuery();
+  const { data: vehicleAssignments = [] } = trpc.vehicleAssignments.list.useQuery(
+    selectedDriverId ? { driverId: selectedDriverId } : undefined,
+    { enabled: Boolean(selectedDriverId) }
+  );
   const createMutation = trpc.drivers.create.useMutation();
   const updateMutation = trpc.drivers.update.useMutation();
   const deleteMutation = trpc.drivers.delete.useMutation();
   const createVehicleMutation = trpc.driverVehicles.create.useMutation();
+  const updateVehicleMutation = trpc.driverVehicles.update.useMutation();
   const deleteVehicleMutation = trpc.driverVehicles.delete.useMutation();
 
   const sortedDrivers = useMemo(
@@ -84,9 +91,9 @@ export default function Drivers() {
   const vehiclesByDriverId = useMemo(() => {
     const map = new Map<string, any[]>();
     for (const vehicle of allVehicles as any[]) {
-      const current = map.get(vehicle.driverId) ?? [];
+      const current = map.get(vehicle.currentDriverId) ?? [];
       current.push(vehicle);
-      map.set(vehicle.driverId, current);
+      map.set(vehicle.currentDriverId, current);
     }
     return map;
   }, [allVehicles]);
@@ -172,19 +179,48 @@ export default function Drivers() {
     }
 
     try {
-      await createVehicleMutation.mutateAsync({
-        driverId: selectedDriverId,
+      const payload = {
+        currentDriverId:
+          vehicleForm.currentDriverId || (editingVehicleId ? null : selectedDriverId),
         model: vehicleForm.model,
         plate: vehicleForm.plate.toUpperCase(),
         nickname: vehicleForm.nickname || undefined,
         isPrimary: vehicleForm.isPrimary,
-      });
-      setVehicleForm({ model: "", plate: "", nickname: "", isPrimary: false });
-      toast.success("Veículo adicionado");
+      };
+
+      if (editingVehicleId) {
+        await updateVehicleMutation.mutateAsync({
+          id: editingVehicleId,
+          ...payload,
+        });
+      } else {
+        await createVehicleMutation.mutateAsync(payload);
+      }
+
+      setEditingVehicleId(null);
+      setVehicleForm({ currentDriverId: "", model: "", plate: "", nickname: "", isPrimary: false });
+      toast.success(editingVehicleId ? "Veículo atualizado" : "Veículo adicionado");
       refetchVehicles();
     } catch (error: any) {
       toast.error(error?.message ?? "Não foi possível salvar o veículo");
     }
+  };
+
+  const openEditVehicle = (vehicle: any) => {
+    setSelectedDriverId(vehicle.currentDriverId ?? selectedDriverId ?? sortedDrivers[0]?.id ?? null);
+    setEditingVehicleId(vehicle.id);
+    setVehicleForm({
+      currentDriverId: vehicle.currentDriverId ?? "",
+      model: vehicle.model ?? "",
+      plate: vehicle.plate ?? "",
+      nickname: vehicle.nickname ?? "",
+      isPrimary: Boolean(vehicle.isPrimary),
+    });
+  };
+
+  const resetVehicleForm = () => {
+    setEditingVehicleId(null);
+    setVehicleForm({ currentDriverId: "", model: "", plate: "", nickname: "", isPrimary: false });
   };
 
   const removeVehicle = async (vehicleId: string) => {
@@ -469,6 +505,34 @@ export default function Drivers() {
               </tbody>
             </table>
           </div>
+
+          <div className="mt-6 rounded-xl border border-border/60 bg-muted/20 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Truck className="h-4 w-4 text-primary" />
+              Histórico de vínculo
+            </div>
+            <div className="mt-3 space-y-2">
+              {vehicleAssignments.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  Nenhum vínculo registrado para este motorista.
+                </div>
+              ) : (
+                vehicleAssignments.map((assignment: any) => (
+                  <div key={assignment.id} className="rounded-lg border border-border/60 bg-background p-3 text-sm">
+                    <div className="font-medium text-foreground">
+                      Veículo {allVehicles.find((vehicle: any) => vehicle.id === assignment.vehicleId)?.plate || assignment.vehicleId}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Início: {assignment.assignedAt ? new Date(assignment.assignedAt).toLocaleString("pt-BR") : "-"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Fim: {assignment.unassignedAt ? new Date(assignment.unassignedAt).toLocaleString("pt-BR") : "Ativo"}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -499,12 +563,39 @@ export default function Drivers() {
                   ))}
                 </SelectContent>
               </Select>
-              {selectedDriver ? (
-                <p className="text-xs text-muted-foreground">
-                  {selectedDriver.name}
-                  {selectedDriver.userId ? " • perfil já vinculado ao usuário" : " • sem vínculo com usuário"}
-                </p>
-              ) : null}
+            {selectedDriver ? (
+              <p className="text-xs text-muted-foreground">
+                {selectedDriver.name}
+                {selectedDriver.userId ? " • perfil já vinculado ao usuário" : " • sem vínculo com usuário"}
+              </p>
+            ) : null}
+          </div>
+            <div className="space-y-2">
+              <Label>Motorista atual</Label>
+              <Select
+                value={
+                  vehicleForm.currentDriverId ||
+                  (editingVehicleId ? "unassigned" : selectedDriverId || "unassigned")
+                }
+                onValueChange={value =>
+                  setVehicleForm(prev => ({
+                    ...prev,
+                    currentDriverId: value === "unassigned" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o motorista atual" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Sem vínculo</SelectItem>
+                  {sortedDrivers.map((driver: any) => (
+                    <SelectItem key={driver.id} value={String(driver.id)}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Modelo</Label>
@@ -542,9 +633,16 @@ export default function Drivers() {
               </Button>
             </div>
           </div>
-          <Button onClick={submitVehicle} disabled={!selectedDriverId}>
-            Adicionar veículo
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={submitVehicle} disabled={!selectedDriverId && !vehicleForm.currentDriverId}>
+              {editingVehicleId ? "Salvar veículo" : "Adicionar veículo"}
+            </Button>
+            {editingVehicleId ? (
+              <Button variant="outline" onClick={resetVehicleForm}>
+                Cancelar edição
+              </Button>
+            ) : null}
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -578,15 +676,21 @@ export default function Drivers() {
                       <td className="px-4 py-3 text-muted-foreground">{vehicle.nickname || "-"}</td>
                       <td className="px-4 py-3">{vehicle.isPrimary ? "Sim" : "Não"}</td>
                       <td className="px-4 py-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => removeVehicle(vehicle.id)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Excluir
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => openEditVehicle(vehicle)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Editar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => removeVehicle(vehicle.id)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))

@@ -3,7 +3,8 @@ create extension if not exists "pgcrypto";
 drop table if exists public.deliveries cascade;
 drop table if exists public.delivery_events cascade;
 drop table if exists public.driver_vehicles cascade;
-drop table if exists public.client_bases cascade;
+drop table if exists public.vehicle_assignments cascade;
+drop table if exists public.operational_bases cascade;
 drop table if exists public.drivers cascade;
 drop table if exists public.clients cascade;
 drop table if exists public.users cascade;
@@ -136,22 +137,21 @@ create table public.clients (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.client_bases (
+create table public.operational_bases (
   id uuid primary key default gen_random_uuid(),
   "tenantId" uuid not null references public.tenants (id) on delete cascade,
-  "clientId" uuid not null references public.clients (id) on delete cascade,
   name text not null,
   "postalCode" text,
-  street text,
+  street text not null,
   number text,
   neighborhood text,
-  city text,
-  state text,
+  city text not null,
+  state text not null,
   complement text,
   reference text,
   latitude numeric(12, 8),
   longitude numeric(12, 8),
-  "isDefault" boolean not null default false,
+  "isPrimary" boolean not null default false,
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now()
 );
@@ -172,22 +172,38 @@ create table public.drivers (
 create table public.driver_vehicles (
   id uuid primary key default gen_random_uuid(),
   "tenantId" uuid not null references public.tenants (id) on delete cascade,
-  "driverId" uuid not null references public.drivers (id) on delete cascade,
+  "currentDriverId" uuid references public.drivers (id) on delete set null,
   model text not null,
   plate text not null,
   nickname text,
   "isPrimary" boolean not null default false,
+  "lastAssignedAt" timestamptz,
+  "lastUnassignedAt" timestamptz,
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now(),
   constraint driver_vehicles_plate_unique unique ("tenantId", plate)
+);
+
+create table public.vehicle_assignments (
+  id uuid primary key default gen_random_uuid(),
+  "tenantId" uuid not null references public.tenants (id) on delete cascade,
+  "vehicleId" uuid not null references public.driver_vehicles (id) on delete cascade,
+  "driverId" uuid not null references public.drivers (id) on delete cascade,
+  "assignedByUserId" uuid references public.users (id) on delete set null,
+  "assignedAt" timestamptz not null default now(),
+  "unassignedAt" timestamptz,
+  notes text,
+  "createdAt" timestamptz not null default now(),
+  "updatedAt" timestamptz not null default now()
 );
 
 create table public.deliveries (
   id uuid primary key default gen_random_uuid(),
   "tenantId" uuid not null references public.tenants (id) on delete cascade,
   "clientId" uuid references public.clients (id) on delete set null,
-  "baseId" uuid references public.client_bases (id) on delete set null,
+  "baseId" uuid references public.operational_bases (id) on delete set null,
   "clientName" text not null,
+  "clientPhone" text,
   "originPostalCode" text,
   "originStreet" text,
   "originNumber" text,
@@ -419,12 +435,15 @@ create index if not exists users_tenant_id_idx on public.users ("tenantId");
 create index if not exists drivers_tenant_id_idx on public.drivers ("tenantId");
 create index if not exists drivers_user_id_idx on public.drivers ("userId");
 create index if not exists driver_vehicles_tenant_id_idx on public.driver_vehicles ("tenantId");
-create index if not exists driver_vehicles_driver_id_idx on public.driver_vehicles ("driverId");
+create index if not exists driver_vehicles_current_driver_id_idx on public.driver_vehicles ("currentDriverId");
+create index if not exists vehicle_assignments_tenant_id_idx on public.vehicle_assignments ("tenantId");
+create index if not exists vehicle_assignments_vehicle_id_idx on public.vehicle_assignments ("vehicleId");
+create index if not exists vehicle_assignments_driver_id_idx on public.vehicle_assignments ("driverId");
 create index if not exists clients_tenant_id_idx on public.clients ("tenantId");
 create index if not exists clients_name_idx on public.clients (name);
-create index if not exists client_bases_tenant_id_idx on public.client_bases ("tenantId");
-create index if not exists client_bases_client_id_idx on public.client_bases ("clientId");
-create index if not exists client_bases_default_idx on public.client_bases ("tenantId", "clientId", "isDefault");
+create index if not exists operational_bases_tenant_id_idx on public.operational_bases ("tenantId");
+create index if not exists operational_bases_primary_idx on public.operational_bases ("tenantId", "isPrimary");
+create unique index if not exists operational_bases_single_primary_idx on public.operational_bases ("tenantId") where "isPrimary";
 create index if not exists deliveries_tenant_id_idx on public.deliveries ("tenantId");
 create index if not exists deliveries_status_idx on public.deliveries (status);
 create index if not exists deliveries_driver_id_idx on public.deliveries ("driverId");
@@ -440,9 +459,10 @@ create index if not exists delivery_events_recorded_at_idx on public.delivery_ev
 alter table public.tenants enable row level security;
 alter table public.users enable row level security;
 alter table public.clients enable row level security;
-alter table public.client_bases enable row level security;
+alter table public.operational_bases enable row level security;
 alter table public.drivers enable row level security;
 alter table public.driver_vehicles enable row level security;
+alter table public.vehicle_assignments enable row level security;
 alter table public.deliveries enable row level security;
 alter table public.delivery_events enable row level security;
 
@@ -452,12 +472,14 @@ drop policy if exists "superadmin can manage tenants" on public.tenants;
 drop policy if exists "authenticated can read tenants" on public.tenants;
 drop policy if exists "tenant users can read clients" on public.clients;
 drop policy if exists "tenant users can manage clients" on public.clients;
-drop policy if exists "tenant users can read bases" on public.client_bases;
-drop policy if exists "tenant users can manage bases" on public.client_bases;
+drop policy if exists "tenant users can read bases" on public.operational_bases;
+drop policy if exists "tenant users can manage bases" on public.operational_bases;
 drop policy if exists "tenant users can read drivers" on public.drivers;
 drop policy if exists "tenant users can manage drivers" on public.drivers;
 drop policy if exists "tenant users can read driver vehicles" on public.driver_vehicles;
 drop policy if exists "tenant users can manage driver vehicles" on public.driver_vehicles;
+drop policy if exists "tenant users can read vehicle assignments" on public.vehicle_assignments;
+drop policy if exists "tenant users can manage vehicle assignments" on public.vehicle_assignments;
 drop policy if exists "tenant users can read deliveries" on public.deliveries;
 drop policy if exists "tenant users can manage deliveries" on public.deliveries;
 drop policy if exists "tenant users can read delivery events" on public.delivery_events;
@@ -521,13 +543,13 @@ using (public.current_user_role() = 'superadmin' or (public.current_user_role() 
 with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
 
 create policy "tenant users can read bases"
-on public.client_bases
+on public.operational_bases
 for select
 to authenticated
 using (public.current_user_role() = 'superadmin' or public.current_user_tenant_id() = "tenantId");
 
 create policy "tenant users can manage bases"
-on public.client_bases
+on public.operational_bases
 for all
 to authenticated
 using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
@@ -554,6 +576,19 @@ using (public.current_user_role() = 'superadmin' or public.current_user_tenant_i
 
 create policy "tenant users can manage driver vehicles"
 on public.driver_vehicles
+for all
+to authenticated
+using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
+with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
+
+create policy "tenant users can read vehicle assignments"
+on public.vehicle_assignments
+for select
+to authenticated
+using (public.current_user_role() = 'superadmin' or public.current_user_tenant_id() = "tenantId");
+
+create policy "tenant users can manage vehicle assignments"
+on public.vehicle_assignments
 for all
 to authenticated
 using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
@@ -607,16 +642,20 @@ create trigger set_clients_updated_at
 before update on public.clients
 for each row execute function public.set_updated_at();
 
-create trigger set_client_bases_updated_at
-before update on public.client_bases
-for each row execute function public.set_updated_at();
-
-create trigger set_drivers_updated_at
-before update on public.drivers
+create trigger set_operational_bases_updated_at
+before update on public.operational_bases
 for each row execute function public.set_updated_at();
 
 create trigger set_driver_vehicles_updated_at
 before update on public.driver_vehicles
+for each row execute function public.set_updated_at();
+
+create trigger set_vehicle_assignments_updated_at
+before update on public.vehicle_assignments
+for each row execute function public.set_updated_at();
+
+create trigger set_drivers_updated_at
+before update on public.drivers
 for each row execute function public.set_updated_at();
 
 create trigger set_deliveries_updated_at

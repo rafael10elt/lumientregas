@@ -11,10 +11,13 @@ import {
   deleteDriverVehicle,
   deleteDriver,
   createTenant,
+  createOperationalBase,
   getDeliveries,
   getDeliveryById,
   getDeliveryEvents,
+  getOperationalBases,
   getDriverVehicles,
+  getVehicleAssignments,
   getDrivers,
   getDriverById,
   getUsers,
@@ -26,8 +29,10 @@ import {
   updateDriver,
   updateDeliveriesOrder,
   updateDriverVehicle,
+  updateOperationalBase,
   updateTenant,
   updateUser,
+  deleteOperationalBase,
 } from "./db";
 import { geocodeAddress, optimizeByProximity } from "./_core/routePlanner";
 import { TRPCError } from "@trpc/server";
@@ -71,8 +76,10 @@ export const appRouter = router({
       .input(
         z.object({
           clientName: z.string(),
+          clientPhone: z.string().optional(),
+          baseId: z.coerce.string().optional(),
           originPostalCode: z.string().optional(),
-          originAddress: z.string(),
+          originAddress: z.string().optional(),
           originLat: z.string().optional(),
           originLng: z.string().optional(),
           destinationPostalCode: z.string().optional(),
@@ -87,10 +94,19 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
+        const tenantId = ctx.tenant?.id ?? ctx.user?.tenantId ?? null;
+        if (!tenantId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Tenant não encontrado para criar a entrega",
+          });
+        }
+
         await createDelivery(
           {
             ...input,
             createdByUserId: ctx.user?.id ?? null,
+            tenantId,
           },
           ctx.accessToken
         );
@@ -104,6 +120,8 @@ export const appRouter = router({
           status: z.enum(["pendente", "em_rota", "entregue", "cancelado"]).optional(),
           driverId: z.coerce.string().optional(),
           notes: z.string().optional(),
+          clientPhone: z.string().optional(),
+          baseId: z.coerce.string().optional(),
           originPostalCode: z.string().optional(),
           originAddress: z.string().optional(),
           destinationPostalCode: z.string().optional(),
@@ -279,6 +297,69 @@ export const appRouter = router({
       }),
   }),
 
+  operationalBases: router({
+    list: tenantProtectedProcedure.query(async ({ ctx }) => getOperationalBases(ctx.accessToken)),
+
+    create: tenantProtectedProcedure
+      .input(
+        z.object({
+          name: z.string(),
+          postalCode: z.string().optional(),
+          street: z.string(),
+          number: z.string().optional(),
+          neighborhood: z.string().optional(),
+          city: z.string(),
+          state: z.string(),
+          complement: z.string().optional(),
+          reference: z.string().optional(),
+          latitude: z.coerce.number().optional(),
+          longitude: z.coerce.number().optional(),
+          isPrimary: z.boolean().optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        await createOperationalBase(
+          {
+            ...input,
+            tenantId: ctx.tenant?.id ?? ctx.user?.tenantId ?? undefined,
+          },
+          ctx.accessToken
+        );
+        return { success: true };
+      }),
+
+    update: tenantProtectedProcedure
+      .input(
+        z.object({
+          id: z.coerce.string(),
+          name: z.string().optional(),
+          postalCode: z.string().optional(),
+          street: z.string().optional(),
+          number: z.string().optional(),
+          neighborhood: z.string().optional(),
+          city: z.string().optional(),
+          state: z.string().optional(),
+          complement: z.string().optional(),
+          reference: z.string().optional(),
+          latitude: z.coerce.number().optional(),
+          longitude: z.coerce.number().optional(),
+          isPrimary: z.boolean().optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const { id, ...updates } = input;
+        await updateOperationalBase(id, updates, ctx.accessToken);
+        return { success: true };
+      }),
+
+    delete: tenantProtectedProcedure
+      .input(z.coerce.string())
+      .mutation(async ({ input, ctx }) => {
+        await deleteOperationalBase(input, ctx.accessToken);
+        return { success: true };
+      }),
+  }),
+
   driverVehicles: router({
     list: tenantProtectedProcedure
       .input(z.object({ driverId: z.coerce.string().optional() }).optional())
@@ -287,7 +368,7 @@ export const appRouter = router({
     create: tenantProtectedProcedure
       .input(
         z.object({
-          driverId: z.coerce.string(),
+          currentDriverId: z.string().nullable().optional(),
           tenantId: z.coerce.string().optional(),
           model: z.string(),
           plate: z.string(),
@@ -310,6 +391,7 @@ export const appRouter = router({
       .input(
         z.object({
           id: z.coerce.string(),
+          currentDriverId: z.string().nullable().optional(),
           model: z.string().optional(),
           plate: z.string().optional(),
           nickname: z.string().optional(),
@@ -330,12 +412,27 @@ export const appRouter = router({
       }),
   }),
 
+  vehicleAssignments: router({
+    list: tenantProtectedProcedure
+      .input(
+        z
+          .object({
+            vehicleId: z.coerce.string().optional(),
+            driverId: z.coerce.string().optional(),
+            activeOnly: z.boolean().optional(),
+          })
+          .optional()
+      )
+      .query(async ({ input, ctx }) => getVehicleAssignments(input, ctx.accessToken)),
+  }),
+
   routes: router({
     optimize: tenantProtectedProcedure
       .input(
         z.object({
           driverId: z.coerce.string(),
-          baseAddress: z.string(),
+          baseAddress: z.string().optional(),
+          baseId: z.coerce.string().optional(),
           scheduledAt: z.date().optional(),
         })
       )
@@ -358,15 +455,28 @@ export const appRouter = router({
           delivery => delivery.status !== "entregue" && delivery.status !== "cancelado"
         );
 
+        const operationalBases = await getOperationalBases(ctx.accessToken);
+        const selectedBase =
+          (input.baseId && operationalBases.find(base => base.id === input.baseId)) ||
+          operationalBases.find(base => base.isPrimary) ||
+          null;
+        const baseAddress =
+          input.baseAddress ??
+          (selectedBase
+            ? [selectedBase.street, selectedBase.number, selectedBase.neighborhood, selectedBase.city, selectedBase.state]
+                .filter(Boolean)
+                .join(", ")
+            : "");
+
         const stops = openDeliveries.map(delivery => ({
           id: delivery.id,
           address: delivery.destinationAddress,
         }));
 
-        const optimized = await optimizeByProximity(input.baseAddress, stops);
+        const optimized = await optimizeByProximity(baseAddress, stops);
 
         return {
-          baseAddress: input.baseAddress,
+          baseAddress,
           driverId: input.driverId,
           deliveries: optimized.map(entry => ({
             ...openDeliveries.find(delivery => delivery.id === entry.id)!,

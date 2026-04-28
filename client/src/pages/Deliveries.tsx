@@ -2,13 +2,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCep } from "@/lib/format";
-import { openGpsRoute } from "@/lib/navigation";
+import { formatCep, formatPhone } from "@/lib/format";
+import { openWhatsApp, openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { lookupCep } from "@/lib/cep";
 import {
@@ -16,16 +15,16 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  MessageCircleMore,
   MapPin,
   Navigation,
-  Package2,
   Pencil,
   Plus,
   Search,
   ShieldAlert,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const DELIVERY_STATUSES = [
@@ -51,6 +50,8 @@ function formatDateTime(value: string | Date | null | undefined) {
 
 type DeliveryForm = {
   clientName: string;
+  clientPhone: string;
+  baseId: string;
   originPostalCode: string;
   originAddress: string;
   destinationPostalCode: string;
@@ -67,6 +68,8 @@ type RescheduleForm = {
 
 const emptyForm: DeliveryForm = {
   clientName: "",
+  clientPhone: "",
+  baseId: "",
   originPostalCode: "",
   originAddress: "",
   destinationPostalCode: "",
@@ -112,6 +115,7 @@ export default function Deliveries() {
 
   const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(queryInput);
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const { data: bases = [] } = trpc.operationalBases.list.useQuery();
   const createMutation = trpc.deliveries.create.useMutation();
   const updateMutation = trpc.deliveries.update.useMutation();
   const updateStatusMutation = trpc.deliveries.updateStatus.useMutation();
@@ -149,6 +153,8 @@ export default function Deliveries() {
     setEditingId(delivery.id);
     setFormData({
       clientName: delivery.clientName ?? "",
+      clientPhone: delivery.clientPhone ?? "",
+      baseId: delivery.baseId ?? "",
       originPostalCode: delivery.originPostalCode ?? "",
       originAddress: delivery.originAddress ?? "",
       destinationPostalCode: delivery.destinationPostalCode ?? "",
@@ -197,7 +203,7 @@ export default function Deliveries() {
   };
 
   const submitDelivery = async () => {
-    if (!formData.clientName || !formData.originAddress || !formData.destinationAddress) {
+    if (!formData.clientName || !formData.clientPhone || !formData.baseId || !formData.originAddress || !formData.destinationAddress) {
       toast.error("Preencha os campos obrigatórios");
       return;
     }
@@ -205,6 +211,8 @@ export default function Deliveries() {
     try {
       const payload = {
         clientName: formData.clientName,
+        clientPhone: formData.clientPhone || undefined,
+        baseId: formData.baseId || undefined,
         originPostalCode: formData.originPostalCode || undefined,
         originAddress: formData.originAddress,
         destinationPostalCode: formData.destinationPostalCode || undefined,
@@ -316,6 +324,33 @@ export default function Deliveries() {
     );
   };
 
+  const selectedBase = useMemo(
+    () => bases.find((base: any) => String(base.id) === String(formData.baseId)) ?? null,
+    [bases, formData.baseId]
+  );
+
+  const applyBase = (base: any) => {
+    if (!base) return;
+    const addressParts = [base.street, base.number, base.neighborhood, base.city, base.state]
+      .filter(Boolean)
+      .join(", ");
+    setFormData(prev => ({
+      ...prev,
+      baseId: base.id,
+      originPostalCode: base.postalCode ?? prev.originPostalCode,
+      originAddress: addressParts || prev.originAddress,
+    }));
+  };
+
+  useEffect(() => {
+    if (!formData.baseId && bases.length > 0) {
+      const primaryBase = bases.find((base: any) => base.isPrimary) ?? bases[0];
+      if (primaryBase) {
+        applyBase(primaryBase);
+      }
+    }
+  }, [bases, formData.baseId]);
+
   const toggleExpanded = (deliveryId: string) => {
     setExpandedIds(prev =>
       prev.includes(deliveryId) ? prev.filter(id => id !== deliveryId) : [...prev, deliveryId]
@@ -420,6 +455,15 @@ export default function Deliveries() {
                     Trajeto
                   </div>
                   <div className="mt-2 text-sm text-foreground">
+                    Cliente: {delivery.clientName}
+                  </div>
+                  <div className="mt-1 text-sm text-foreground">
+                    Telefone: {delivery.clientPhone || "-"}
+                  </div>
+                  <div className="mt-1 text-sm text-foreground">
+                    Base: {bases.find((base: any) => String(base.id) === String(delivery.baseId))?.name || "Base principal"}
+                  </div>
+                  <div className="mt-2 text-sm text-foreground">
                     Origem: {delivery.originAddress}
                   </div>
                   <div className="mt-1 text-sm text-foreground">
@@ -431,6 +475,17 @@ export default function Deliveries() {
                   <div className="mt-1 text-xs text-muted-foreground">
                     {delivery.notes || "Sem observacoes"}
                   </div>
+                  {delivery.clientPhone ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 gap-2"
+                      onClick={() => openWhatsApp(delivery.clientPhone, `Olá ${delivery.clientName}, estou falando sobre sua entrega.`)}
+                    >
+                      <MessageCircleMore className="h-4 w-4" />
+                      Contatar cliente
+                    </Button>
+                  ) : null}
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-background p-4 lg:col-span-2">
@@ -506,6 +561,52 @@ export default function Deliveries() {
                   value={formData.clientName}
                   onChange={e => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Telefone do cliente *</Label>
+                <Input
+                  placeholder="(81) 99999-9999"
+                  value={formData.clientPhone}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
+                  }
+                  inputMode="tel"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Base operacional *</Label>
+                <Select
+                  value={formData.baseId || "unassigned"}
+                  onValueChange={value => {
+                    const base = bases.find((entry: any) => String(entry.id) === value);
+                    if (base) {
+                      setFormData(prev => ({ ...prev, baseId: value }));
+                      applyBase(base);
+                      return;
+                    }
+                    setFormData(prev => ({ ...prev, baseId: "" }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a base" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Base principal automática</SelectItem>
+                    {bases.map((base: any) => (
+                      <SelectItem key={base.id} value={String(base.id)}>
+                        {base.name}
+                        {base.isPrimary ? " (principal)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedBase ? (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedBase.street}, {selectedBase.number || "-"} - {selectedBase.city}/{selectedBase.state}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-2">

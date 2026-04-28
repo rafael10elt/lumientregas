@@ -6,6 +6,7 @@ import {
   type DeliveryEvent,
   type Driver,
   type DriverVehicle,
+  type InsertOperationalBase,
   type InsertTenant,
   type InsertDelivery,
   type InsertDeliveryEvent,
@@ -13,11 +14,15 @@ import {
   type InsertClientBase,
   type InsertDriver,
   type InsertDriverVehicle,
+  type InsertVehicleAssignment,
   type InsertUser,
+  type OperationalBase,
   type Tenant,
+  type VehicleAssignment,
   type User,
 } from "../drizzle/schema";
 import { createSupabaseAdminClient, createSupabaseAnonClient } from "./_core/supabase";
+import { geocodeAddress, haversineKm } from "./_core/routePlanner";
 
 function toIsoString(value: Date | string | null | undefined) {
   if (value == null) return undefined;
@@ -33,6 +38,29 @@ function removeUndefined<T extends Record<string, unknown>>(value: T): Partial<T
   return Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined)
   ) as Partial<T>;
+}
+
+async function estimateDeliveryMetrics(originAddress: string, destinationAddress: string) {
+  const [origin, destination] = await Promise.all([
+    geocodeAddress(originAddress),
+    geocodeAddress(destinationAddress),
+  ]);
+
+  if (!origin || !destination) {
+    return {
+      distance: null as string | null,
+      estimatedTime: null as string | null,
+    };
+  }
+
+  const distanceKm = haversineKm(origin, destination);
+  const roundedDistance = Number(distanceKm.toFixed(1));
+  const estimatedMinutes = Math.max(1, Math.round((distanceKm / 28) * 60));
+
+  return {
+    distance: `${roundedDistance.toFixed(1)} km`,
+    estimatedTime: `${estimatedMinutes} min`,
+  };
 }
 
 function pickField<T>(row: Record<string, any>, ...keys: string[]): T | undefined {
@@ -95,11 +123,29 @@ function mapDriver(row: Record<string, any>): Driver {
 function mapDriverVehicle(row: Record<string, any>): DriverVehicle {
   return {
     id: String(row.id),
-    driverId: String(row.driverId),
+    tenantId: String(row.tenantId),
+    currentDriverId: row.currentDriverId ?? null,
     model: String(row.model),
     plate: String(row.plate),
     nickname: row.nickname ?? null,
     isPrimary: Boolean(row.isPrimary),
+    lastAssignedAt: toDate(row.lastAssignedAt),
+    lastUnassignedAt: toDate(row.lastUnassignedAt),
+    createdAt: toDate(row.createdAt)!,
+    updatedAt: toDate(row.updatedAt)!,
+  };
+}
+
+function mapVehicleAssignment(row: Record<string, any>): VehicleAssignment {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenantId),
+    vehicleId: String(row.vehicleId),
+    driverId: String(row.driverId),
+    assignedByUserId: row.assignedByUserId ?? null,
+    assignedAt: toDate(row.assignedAt)!,
+    unassignedAt: toDate(row.unassignedAt),
+    notes: row.notes ?? null,
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
   };
@@ -111,6 +157,7 @@ function mapDelivery(row: Record<string, any>): Delivery {
     clientId: row.clientId ?? null,
     baseId: row.baseId ?? null,
     clientName: String(row.clientName),
+    clientPhone: row.clientPhone ?? null,
     originPostalCode: row.originPostalCode ?? null,
     originAddress: String(row.originAddress),
     originStreet: row.originStreet ?? null,
@@ -531,6 +578,142 @@ export async function deleteClientBase(id: string, accessToken?: string | null) 
   if (error) throw error;
 }
 
+export async function getOperationalBases(accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { data, error } = await db.from("operational_bases").select("*").order("isPrimary", { ascending: false }).order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(mapOperationalBase);
+}
+
+export async function createOperationalBase(input: InsertOperationalBase, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  let isPrimary = input.isPrimary ?? false;
+  if (input.tenantId) {
+    const { data: existingPrimary, error: existingPrimaryError } = await db
+      .from("operational_bases")
+      .select("id")
+      .eq("tenantId", input.tenantId)
+      .eq("isPrimary", true)
+      .limit(1)
+      .maybeSingle();
+    if (existingPrimaryError) throw existingPrimaryError;
+    if (!existingPrimary) {
+      isPrimary = true;
+    }
+  }
+
+  if (isPrimary && input.tenantId) {
+    const { error: clearError } = await db
+      .from("operational_bases")
+      .update({ isPrimary: false, updatedAt: new Date().toISOString() })
+      .eq("tenantId", input.tenantId);
+    if (clearError) throw clearError;
+  }
+
+  const { data, error } = await db
+    .from("operational_bases")
+    .insert(
+      removeUndefined({
+        ...input,
+        isPrimary,
+        latitude: input.latitude == null ? undefined : String(input.latitude),
+        longitude: input.longitude == null ? undefined : String(input.longitude),
+        createdAt: toIsoString(input.createdAt),
+        updatedAt: toIsoString(input.updatedAt),
+      })
+  )
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data ? mapOperationalBase(data) : null;
+}
+
+export async function updateOperationalBase(
+  id: string,
+  updates: Partial<InsertOperationalBase>,
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
+  const { data: currentBase, error: currentError } = await db
+    .from("operational_bases")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (currentError) throw currentError;
+
+  if (updates.isPrimary && currentBase?.tenantId) {
+    const { error: clearError } = await db
+      .from("operational_bases")
+      .update({ isPrimary: false, updatedAt: new Date().toISOString() })
+      .eq("tenantId", currentBase.tenantId)
+      .neq("id", id);
+    if (clearError) throw clearError;
+  }
+
+  const { error } = await db
+    .from("operational_bases")
+    .update(
+      removeUndefined({
+        ...updates,
+        latitude: updates.latitude == null ? undefined : String(updates.latitude),
+        longitude: updates.longitude == null ? undefined : String(updates.longitude),
+        updatedAt: new Date().toISOString(),
+      })
+    )
+    .eq("id", id);
+  if (error) throw error;
+
+  if (updates.isPrimary === false && currentBase?.isPrimary) {
+    const { data: stillPrimary, error: stillPrimaryError } = await db
+      .from("operational_bases")
+      .select("id")
+      .eq("tenantId", currentBase.tenantId)
+      .eq("isPrimary", true)
+      .limit(1)
+      .maybeSingle();
+    if (stillPrimaryError) throw stillPrimaryError;
+    if (!stillPrimary) {
+      const { error: restoreError } = await db
+        .from("operational_bases")
+        .update({ isPrimary: true, updatedAt: new Date().toISOString() })
+        .eq("id", id);
+      if (restoreError) throw restoreError;
+    }
+  }
+}
+
+export async function deleteOperationalBase(id: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { data: currentBase, error: currentError } = await db
+    .from("operational_bases")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (currentError) throw currentError;
+
+  const { error: deleteError } = await db.from("operational_bases").delete().eq("id", id);
+  if (deleteError) throw deleteError;
+
+  if (currentBase?.isPrimary && currentBase?.tenantId) {
+    const { data: fallbackBase, error: fallbackError } = await db
+      .from("operational_bases")
+      .select("id")
+      .eq("tenantId", currentBase.tenantId)
+      .order("createdAt", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (fallbackError) throw fallbackError;
+
+    if (fallbackBase?.id) {
+      const { error: promoteError } = await db
+        .from("operational_bases")
+        .update({ isPrimary: true, updatedAt: new Date().toISOString() })
+        .eq("id", fallbackBase.id);
+      if (promoteError) throw promoteError;
+    }
+  }
+}
+
 export async function getDeliveries(
   filters?: {
     status?: string;
@@ -585,15 +768,57 @@ export async function getDeliveryEvents(
 }
 
 export async function createDelivery(delivery: InsertDelivery, accessToken?: string | null) {
+  if (!delivery.tenantId) {
+    throw new Error("tenantId is required to create a delivery");
+  }
+
   const db = clientFor(accessToken);
+  let resolvedBaseId = delivery.baseId ?? null;
+  let resolvedOriginAddress = delivery.originAddress ?? "";
+  let resolvedOriginPostalCode = delivery.originPostalCode ?? null;
+
+  if ((!resolvedBaseId || !resolvedOriginAddress) && delivery.tenantId) {
+    const { data: tenantBases, error: baseError } = await db
+      .from("operational_bases")
+      .select("*")
+      .eq("tenantId", delivery.tenantId)
+      .order("isPrimary", { ascending: false })
+      .order("createdAt", { ascending: true });
+    if (baseError) throw baseError;
+
+    const chosenBase =
+      (resolvedBaseId && (tenantBases ?? []).find(base => String(base.id) === String(resolvedBaseId))) ||
+      (tenantBases ?? [])[0] ||
+      null;
+    if (chosenBase) {
+      resolvedBaseId = resolvedBaseId ?? String(chosenBase.id);
+      if (!resolvedOriginAddress) {
+        resolvedOriginAddress = [chosenBase.street, chosenBase.number, chosenBase.neighborhood, chosenBase.city, chosenBase.state]
+          .filter(Boolean)
+          .join(", ");
+      }
+      resolvedOriginPostalCode = resolvedOriginPostalCode ?? chosenBase.postalCode ?? null;
+    }
+  }
+
+  if (!resolvedOriginAddress) {
+    throw new Error("originAddress is required to create a delivery");
+  }
+
+  const autoMetrics =
+    delivery.distance && delivery.estimatedTime
+      ? null
+      : await estimateDeliveryMetrics(resolvedOriginAddress, delivery.destinationAddress);
   const { data, error } = await db
     .from("deliveries")
     .insert(
       removeUndefined({
         ...delivery,
+        tenantId: delivery.tenantId ?? undefined,
         clientId: delivery.clientId ?? null,
-        baseId: delivery.baseId ?? null,
-        originPostalCode: delivery.originPostalCode ?? null,
+        baseId: resolvedBaseId,
+        clientPhone: delivery.clientPhone ?? null,
+        originPostalCode: resolvedOriginPostalCode,
         originStreet: delivery.originStreet ?? null,
         originNumber: delivery.originNumber ?? null,
         originNeighborhood: delivery.originNeighborhood ?? null,
@@ -610,7 +835,10 @@ export async function createDelivery(delivery: InsertDelivery, accessToken?: str
         destinationCity: delivery.destinationCity ?? null,
         destinationState: delivery.destinationState ?? null,
         destinationComplement: delivery.destinationComplement ?? null,
+        originAddress: resolvedOriginAddress,
         routeOrder: delivery.routeOrder ?? null,
+        distance: delivery.distance ?? autoMetrics?.distance ?? null,
+        estimatedTime: delivery.estimatedTime ?? autoMetrics?.estimatedTime ?? null,
       })
     )
     .select("*")
@@ -655,6 +883,15 @@ export async function updateDelivery(
   const db = clientFor(accessToken);
   const normalizedRouteOrder =
     updates.routeOrder === undefined ? undefined : updates.routeOrder;
+  const shouldRecalculateMetrics =
+    updates.distance === undefined ||
+    updates.estimatedTime === undefined ||
+    updates.originAddress !== undefined ||
+    updates.destinationAddress !== undefined;
+  const autoMetrics =
+    shouldRecalculateMetrics && updates.originAddress && updates.destinationAddress
+      ? await estimateDeliveryMetrics(updates.originAddress, updates.destinationAddress)
+      : null;
   const { error } = await db
     .from("deliveries")
     .update(
@@ -662,6 +899,7 @@ export async function updateDelivery(
         ...updates,
         clientId: updates.clientId ?? undefined,
         baseId: updates.baseId ?? undefined,
+        clientPhone: updates.clientPhone ?? undefined,
         originPostalCode: updates.originPostalCode ?? undefined,
         originStreet: updates.originStreet ?? undefined,
         originNumber: updates.originNumber ?? undefined,
@@ -678,6 +916,8 @@ export async function updateDelivery(
         destinationCity: updates.destinationCity ?? undefined,
         destinationState: updates.destinationState ?? undefined,
         destinationComplement: updates.destinationComplement ?? undefined,
+        distance: updates.distance ?? autoMetrics?.distance ?? undefined,
+        estimatedTime: updates.estimatedTime ?? autoMetrics?.estimatedTime ?? undefined,
         updatedAt: new Date().toISOString(),
       })
     )
@@ -749,6 +989,27 @@ export async function updateDeliveryStatus(
       updatedAt: new Date(),
     },
     event,
+  };
+}
+
+function mapOperationalBase(row: Record<string, any>): OperationalBase {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenantId),
+    name: String(row.name),
+    postalCode: row.postalCode ?? null,
+    street: String(row.street),
+    number: row.number ?? null,
+    neighborhood: row.neighborhood ?? null,
+    city: String(row.city),
+    state: String(row.state),
+    complement: row.complement ?? null,
+    reference: row.reference ?? null,
+    latitude: row.latitude ?? null,
+    longitude: row.longitude ?? null,
+    isPrimary: Boolean(row.isPrimary),
+    createdAt: toDate(row.createdAt)!,
+    updatedAt: toDate(row.updatedAt)!,
   };
 }
 
@@ -841,11 +1102,63 @@ export async function getDriverVehicles(driverId?: string, accessToken?: string 
   const db = clientFor(accessToken);
   let query = db.from("driver_vehicles").select("*");
   if (driverId !== undefined) {
-    query = query.eq("driverId", driverId);
+    query = query.eq("currentDriverId", driverId);
   }
   const { data, error } = await query.order("isPrimary", { ascending: false }).order("createdAt", { ascending: true });
   if (error) throw error;
   return (data ?? []).map(mapDriverVehicle);
+}
+
+export async function getVehicleAssignments(
+  filters?: {
+    vehicleId?: string;
+    driverId?: string;
+    activeOnly?: boolean;
+  },
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
+  let query = db.from("vehicle_assignments").select("*");
+  if (filters?.vehicleId) query = query.eq("vehicleId", filters.vehicleId);
+  if (filters?.driverId) query = query.eq("driverId", filters.driverId);
+  if (filters?.activeOnly) query = query.is("unassignedAt", null);
+  const { data, error } = await query.order("assignedAt", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(mapVehicleAssignment);
+}
+
+export async function closeActiveVehicleAssignment(vehicleId: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { error } = await db
+    .from("vehicle_assignments")
+    .update({ unassignedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .eq("vehicleId", vehicleId)
+    .is("unassignedAt", null);
+  if (error) throw error;
+}
+
+export async function createVehicleAssignment(
+  assignment: InsertVehicleAssignment,
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
+  const { data, error } = await db
+    .from("vehicle_assignments")
+    .insert(
+      removeUndefined({
+        ...assignment,
+        tenantId: assignment.tenantId ?? undefined,
+        assignedByUserId: assignment.assignedByUserId ?? null,
+        assignedAt: toIsoString(assignment.assignedAt ?? new Date()) ?? new Date().toISOString(),
+        unassignedAt: toIsoString(assignment.unassignedAt),
+        createdAt: toIsoString(assignment.createdAt),
+        updatedAt: toIsoString(assignment.updatedAt),
+      })
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data ? mapVehicleAssignment(data) : null;
 }
 
 export async function createDriverVehicle(vehicle: InsertDriverVehicle, accessToken?: string | null) {
@@ -856,6 +1169,9 @@ export async function createDriverVehicle(vehicle: InsertDriverVehicle, accessTo
       removeUndefined({
         ...vehicle,
         isPrimary: vehicle.isPrimary ?? false,
+        currentDriverId: vehicle.currentDriverId ?? null,
+        lastAssignedAt: vehicle.currentDriverId ? toIsoString(vehicle.lastAssignedAt ?? new Date()) : toIsoString(vehicle.lastAssignedAt),
+        lastUnassignedAt: toIsoString(vehicle.lastUnassignedAt),
         createdAt: toIsoString(vehicle.createdAt),
         updatedAt: toIsoString(vehicle.updatedAt),
       })
@@ -863,6 +1179,18 @@ export async function createDriverVehicle(vehicle: InsertDriverVehicle, accessTo
     .select("*")
     .single();
   if (error) throw error;
+  if (data?.currentDriverId) {
+    await createVehicleAssignment(
+      {
+        tenantId: data.tenantId,
+        vehicleId: data.id,
+        driverId: data.currentDriverId,
+        assignedAt: new Date(),
+        assignedByUserId: null,
+      },
+      accessToken
+    );
+  }
   return data ? mapDriverVehicle(data) : null;
 }
 
@@ -872,16 +1200,58 @@ export async function updateDriverVehicle(
   accessToken?: string | null
 ) {
   const db = clientFor(accessToken);
+  const { data: currentVehicle, error: currentError } = await db
+    .from("driver_vehicles")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (currentError) throw currentError;
+  const nextDriverId = updates.currentDriverId;
+
   const { error } = await db
     .from("driver_vehicles")
     .update(
       removeUndefined({
         ...updates,
+        currentDriverId: updates.currentDriverId === undefined ? undefined : updates.currentDriverId,
+        lastAssignedAt:
+          nextDriverId === undefined
+            ? undefined
+            : nextDriverId
+              ? new Date().toISOString()
+              : undefined,
+        lastUnassignedAt:
+          nextDriverId === undefined
+            ? undefined
+            : nextDriverId
+              ? undefined
+              : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
     )
     .eq("id", id);
   if (error) throw error;
+
+  const previousDriverId = currentVehicle?.currentDriverId ?? null;
+
+  if (nextDriverId !== undefined && String(nextDriverId ?? "") !== String(previousDriverId ?? "")) {
+    if (previousDriverId) {
+      await closeActiveVehicleAssignment(id, accessToken);
+    }
+    if (nextDriverId) {
+      await createVehicleAssignment(
+        {
+          tenantId: currentVehicle?.tenantId,
+          vehicleId: id,
+          driverId: nextDriverId,
+          assignedAt: new Date(),
+          assignedByUserId: null,
+        },
+        accessToken
+      );
+    }
+  }
 }
 
 export async function deleteDriverVehicle(id: string, accessToken?: string | null) {
