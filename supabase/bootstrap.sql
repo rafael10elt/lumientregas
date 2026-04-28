@@ -1,6 +1,7 @@
 create extension if not exists "pgcrypto";
 
 drop table if exists public.deliveries cascade;
+drop table if exists public.delivery_events cascade;
 drop table if exists public.driver_vehicles cascade;
 drop table if exists public.client_bases cascade;
 drop table if exists public.drivers cascade;
@@ -13,6 +14,7 @@ drop function if exists public.ensure_first_user_is_superadmin() cascade;
 drop function if exists public.handle_new_auth_user() cascade;
 
 drop type if exists public.delivery_status cascade;
+drop type if exists public.delivery_event_type cascade;
 drop type if exists public.driver_status cascade;
 drop type if exists public.user_role cascade;
 drop type if exists public.tenant_status cascade;
@@ -21,6 +23,7 @@ drop type if exists public.tenant_payment_status cascade;
 create type public.user_role as enum ('superadmin', 'admin', 'motorista');
 create type public.driver_status as enum ('available', 'busy', 'offline');
 create type public.delivery_status as enum ('pendente', 'em_rota', 'entregue', 'cancelado');
+create type public.delivery_event_type as enum ('status_change');
 create type public.tenant_status as enum ('active', 'suspended');
 create type public.tenant_payment_status as enum ('ok', 'pending', 'overdue');
 
@@ -219,6 +222,24 @@ create table public.deliveries (
   "updatedAt" timestamptz not null default now()
 );
 
+create table public.delivery_events (
+  id uuid primary key default gen_random_uuid(),
+  "tenantId" uuid not null references public.tenants (id) on delete cascade,
+  "deliveryId" uuid not null references public.deliveries (id) on delete cascade,
+  "driverId" uuid references public.drivers (id) on delete set null,
+  "createdByUserId" uuid references public.users (id) on delete set null,
+  "eventType" public.delivery_event_type not null default 'status_change',
+  "fromStatus" public.delivery_status,
+  "toStatus" public.delivery_status not null,
+  latitude numeric(12, 8),
+  longitude numeric(12, 8),
+  accuracy numeric(10, 2),
+  metadata jsonb not null default '{}'::jsonb,
+  "recordedAt" timestamptz not null default now(),
+  "createdAt" timestamptz not null default now(),
+  "updatedAt" timestamptz not null default now()
+);
+
 create or replace function public.is_current_user_superadmin()
 returns boolean
 language sql
@@ -411,6 +432,10 @@ create index if not exists deliveries_client_id_idx on public.deliveries ("clien
 create index if not exists deliveries_base_id_idx on public.deliveries ("baseId");
 create index if not exists deliveries_scheduled_at_idx on public.deliveries ("scheduledAt");
 create index if not exists deliveries_route_order_idx on public.deliveries ("tenantId", "driverId", "routeOrder");
+create index if not exists delivery_events_delivery_id_idx on public.delivery_events ("deliveryId");
+create index if not exists delivery_events_driver_id_idx on public.delivery_events ("driverId");
+create index if not exists delivery_events_tenant_id_idx on public.delivery_events ("tenantId");
+create index if not exists delivery_events_recorded_at_idx on public.delivery_events ("recordedAt");
 
 alter table public.tenants enable row level security;
 alter table public.users enable row level security;
@@ -419,6 +444,7 @@ alter table public.client_bases enable row level security;
 alter table public.drivers enable row level security;
 alter table public.driver_vehicles enable row level security;
 alter table public.deliveries enable row level security;
+alter table public.delivery_events enable row level security;
 
 drop policy if exists "tenant users can read themselves" on public.users;
 drop policy if exists "tenant users can manage themselves" on public.users;
@@ -434,6 +460,8 @@ drop policy if exists "tenant users can read driver vehicles" on public.driver_v
 drop policy if exists "tenant users can manage driver vehicles" on public.driver_vehicles;
 drop policy if exists "tenant users can read deliveries" on public.deliveries;
 drop policy if exists "tenant users can manage deliveries" on public.deliveries;
+drop policy if exists "tenant users can read delivery events" on public.delivery_events;
+drop policy if exists "tenant users can manage delivery events" on public.delivery_events;
 
 create policy "superadmin can manage tenants"
 on public.tenants
@@ -544,6 +572,19 @@ to authenticated
 using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
 with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
 
+create policy "tenant users can read delivery events"
+on public.delivery_events
+for select
+to authenticated
+using (public.current_user_role() = 'superadmin' or public.current_user_tenant_id() = "tenantId");
+
+create policy "tenant users can manage delivery events"
+on public.delivery_events
+for all
+to authenticated
+using (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"))
+with check (public.current_user_role() = 'superadmin' or (public.current_user_role() = 'admin' and public.current_user_tenant_id() = "tenantId"));
+
 create trigger set_tenants_updated_at
 before update on public.tenants
 for each row execute function public.set_updated_at();
@@ -580,4 +621,8 @@ for each row execute function public.set_updated_at();
 
 create trigger set_deliveries_updated_at
 before update on public.deliveries
+for each row execute function public.set_updated_at();
+
+create trigger set_delivery_events_updated_at
+before update on public.delivery_events
 for each row execute function public.set_updated_at();

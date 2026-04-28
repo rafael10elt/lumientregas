@@ -3,10 +3,12 @@ import {
   type Client,
   type ClientBase,
   type Delivery,
+  type DeliveryEvent,
   type Driver,
   type DriverVehicle,
   type InsertTenant,
   type InsertDelivery,
+  type InsertDeliveryEvent,
   type InsertClient,
   type InsertClientBase,
   type InsertDriver,
@@ -137,6 +139,26 @@ function mapDelivery(row: Record<string, any>): Delivery {
     notes: row.notes ?? null,
     distance: row.distance ?? null,
     estimatedTime: row.estimatedTime ?? null,
+    createdAt: toDate(row.createdAt)!,
+    updatedAt: toDate(row.updatedAt)!,
+  };
+}
+
+function mapDeliveryEvent(row: Record<string, any>): DeliveryEvent {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenantId),
+    deliveryId: String(row.deliveryId),
+    driverId: row.driverId ?? null,
+    createdByUserId: row.createdByUserId ?? null,
+    eventType: row.eventType,
+    fromStatus: row.fromStatus ?? null,
+    toStatus: row.toStatus,
+    latitude: row.latitude ?? null,
+    longitude: row.longitude ?? null,
+    accuracy: row.accuracy ?? null,
+    metadata: row.metadata ?? null,
+    recordedAt: toDate(row.recordedAt)!,
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
   };
@@ -524,6 +546,29 @@ export async function getDeliveryById(id: string, accessToken?: string | null) {
   return data ? mapDelivery(data) : undefined;
 }
 
+export async function getDeliveryEvents(
+  filters?: {
+    deliveryId?: string;
+    driverId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  },
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
+  let query = db.from("delivery_events").select("*");
+
+  if (filters?.deliveryId) query = query.eq("deliveryId", filters.deliveryId);
+  if (filters?.driverId) query = query.eq("driverId", filters.driverId);
+  if (filters?.startDate) query = query.gte("recordedAt", filters.startDate.toISOString());
+  if (filters?.endDate) query = query.lte("recordedAt", filters.endDate.toISOString());
+
+  const { data, error } = await query.order("recordedAt", { ascending: false });
+  if (error) throw error;
+
+  return (data ?? []).map(mapDeliveryEvent);
+}
+
 export async function createDelivery(delivery: InsertDelivery, accessToken?: string | null) {
   const db = clientFor(accessToken);
   const { data, error } = await db
@@ -558,6 +603,33 @@ export async function createDelivery(delivery: InsertDelivery, accessToken?: str
 
   if (error) throw error;
   return data ? mapDelivery(data) : null;
+}
+
+export async function createDeliveryEvent(event: InsertDeliveryEvent, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const { data, error } = await db
+    .from("delivery_events")
+    .insert(
+      removeUndefined({
+        ...event,
+        driverId: event.driverId ?? null,
+        createdByUserId: event.createdByUserId ?? null,
+        eventType: event.eventType ?? "status_change",
+        fromStatus: event.fromStatus ?? null,
+        latitude: event.latitude == null ? undefined : String(event.latitude),
+        longitude: event.longitude == null ? undefined : String(event.longitude),
+        accuracy: event.accuracy == null ? undefined : String(event.accuracy),
+        metadata: event.metadata ?? {},
+        recordedAt: toIsoString(event.recordedAt) ?? new Date().toISOString(),
+        createdAt: toIsoString(event.createdAt),
+        updatedAt: toIsoString(event.updatedAt),
+      })
+    )
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data ? mapDeliveryEvent(data) : null;
 }
 
 export async function updateDelivery(
@@ -597,6 +669,72 @@ export async function updateDelivery(
     .eq("id", id);
 
   if (error) throw error;
+}
+
+export async function updateDeliveryStatus(
+  id: string,
+  input: {
+    status: Delivery["status"];
+    latitude?: number | string | null;
+    longitude?: number | string | null;
+    accuracy?: number | string | null;
+    metadata?: Record<string, unknown> | null;
+    createdByUserId?: string | null;
+    recordedAt?: Date | string;
+  },
+  accessToken?: string | null
+) {
+  const db = clientFor(accessToken);
+  const { data: currentDelivery, error: deliveryError } = await db
+    .from("deliveries")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (deliveryError) throw deliveryError;
+  if (!currentDelivery) {
+    throw new Error("Delivery not found");
+  }
+
+  const { error: updateError } = await db
+    .from("deliveries")
+    .update({
+      status: input.status,
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (updateError) throw updateError;
+
+  const event = await createDeliveryEvent(
+    {
+      tenantId: String(currentDelivery.tenantId),
+      deliveryId: String(currentDelivery.id),
+      driverId: currentDelivery.driverId ?? null,
+      createdByUserId: input.createdByUserId ?? null,
+      eventType: "status_change",
+      fromStatus: currentDelivery.status,
+      toStatus: input.status,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
+      accuracy: input.accuracy ?? null,
+      metadata: removeUndefined({
+        ...(input.metadata ?? {}),
+        previousStatus: currentDelivery.status,
+      }) as Record<string, unknown>,
+      recordedAt: input.recordedAt ?? new Date(),
+    },
+    accessToken
+  );
+
+  return {
+    delivery: {
+      ...mapDelivery(currentDelivery),
+      status: input.status,
+      updatedAt: new Date(),
+    },
+    event,
+  };
 }
 
 export async function deleteDelivery(id: string, accessToken?: string | null) {

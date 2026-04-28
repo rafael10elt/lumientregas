@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,7 +11,20 @@ import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { lookupCep } from "@/lib/cep";
-import { Calendar, MapPin, Navigation, Package2, Pencil, Plus, Search, ShieldAlert, Trash2 } from "lucide-react";
+import {
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  MapPin,
+  Navigation,
+  Package2,
+  Pencil,
+  Plus,
+  Search,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -28,6 +42,12 @@ const STATUS_COLORS: Record<string, string> = {
   entregue: "bg-green-100 text-green-800",
   cancelado: "bg-red-100 text-red-800",
 };
+
+function formatDateTime(value: string | Date | null | undefined) {
+  if (!value) return "-";
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toLocaleString("pt-BR");
+}
 
 type DeliveryForm = {
   clientName: string;
@@ -61,9 +81,11 @@ export default function Deliveries() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [driverFilter, setDriverFilter] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleTarget, setRescheduleTarget] = useState<string[] | null>(null);
   const [rescheduleForm, setRescheduleForm] = useState<RescheduleForm>({
@@ -76,20 +98,23 @@ export default function Deliveries() {
   const queryInput = useMemo(() => {
     const input: {
       status?: string;
+      driverId?: string;
       startDate?: Date;
       endDate?: Date;
     } = {};
 
     if (statusFilter !== "all") input.status = statusFilter;
+    if (driverFilter !== "all") input.driverId = driverFilter;
     if (startDate) input.startDate = new Date(`${startDate}T00:00:00`);
     if (endDate) input.endDate = new Date(`${endDate}T23:59:59`);
     return input;
-  }, [endDate, startDate, statusFilter]);
+  }, [driverFilter, endDate, startDate, statusFilter]);
 
   const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(queryInput);
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
   const createMutation = trpc.deliveries.create.useMutation();
   const updateMutation = trpc.deliveries.update.useMutation();
+  const updateStatusMutation = trpc.deliveries.updateStatus.useMutation();
   const deleteMutation = trpc.deliveries.delete.useMutation();
   const bulkDeleteMutation = trpc.deliveries.bulkDelete.useMutation();
   const bulkRescheduleMutation = trpc.deliveries.bulkReschedule.useMutation();
@@ -112,6 +137,7 @@ export default function Deliveries() {
 
   const selectedDeliveries = visibleDeliveries.filter((delivery: any) => selectedIds.includes(delivery.id));
   const openDeliveries = visibleDeliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado");
+  const deliveriesInProgress = visibleDeliveries.filter((delivery: any) => delivery.status === "em_rota");
 
   const openCreate = () => {
     setEditingId(null);
@@ -209,7 +235,7 @@ export default function Deliveries() {
 
   const updateDeliveryStatus = async (deliveryId: string, newStatus: string) => {
     try {
-      await updateMutation.mutateAsync({
+      await updateStatusMutation.mutateAsync({
         id: deliveryId,
         status: newStatus as any,
       });
@@ -289,6 +315,163 @@ export default function Deliveries() {
       checked ? [...prev, deliveryId] : prev.filter(id => id !== deliveryId)
     );
   };
+
+  const toggleExpanded = (deliveryId: string) => {
+    setExpandedIds(prev =>
+      prev.includes(deliveryId) ? prev.filter(id => id !== deliveryId) : [...prev, deliveryId]
+    );
+  };
+
+  function DeliveryRow({ delivery }: { delivery: any }) {
+    const expanded = expandedIds.includes(delivery.id);
+    const { data: events = [] } = trpc.deliveryEvents.list.useQuery(
+      { deliveryId: delivery.id },
+      { enabled: expanded }
+    );
+
+    const latestEvent = events[0];
+    const canReschedule = delivery.status !== "entregue" && delivery.status !== "cancelado";
+
+    return (
+      <>
+        <tr className="border-b border-border hover:bg-muted/50">
+          <td className="py-3 px-4">
+            <Checkbox
+              checked={selectedIds.includes(delivery.id)}
+              onCheckedChange={value => toggleSelected(delivery.id, Boolean(value))}
+            />
+          </td>
+          <td className="py-3 px-4">
+            <div className="font-medium">{delivery.clientName}</div>
+            <div className="text-xs text-muted-foreground">{delivery.originPostalCode || "-"}</div>
+          </td>
+          <td className="py-3 px-4">
+            <div className="flex items-start gap-2 text-muted-foreground">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <div className="font-medium text-foreground">{delivery.destinationAddress}</div>
+                <div className="text-xs">{delivery.destinationPostalCode || "-"}</div>
+              </div>
+            </div>
+          </td>
+          <td className="py-3 px-4">
+            <Select value={delivery.status} onValueChange={value => updateDeliveryStatus(delivery.id, value)}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DELIVERY_STATUSES.filter(status => status.value !== "all").map(status => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span
+              className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[delivery.status] || "bg-gray-100 text-gray-800"}`}
+            >
+              {DELIVERY_STATUSES.find(s => s.value === delivery.status)?.label ?? delivery.status}
+            </span>
+          </td>
+          <td className="py-3 px-4 text-muted-foreground">
+            <div>{formatDateTime(delivery.scheduledAt)}</div>
+            <div className="text-xs">Ordem: {delivery.routeOrder ?? "automatica"}</div>
+            <div className="text-xs">
+              {latestEvent ? `Ultima acao: ${formatDateTime(latestEvent.recordedAt)}` : "Sem log ainda"}
+            </div>
+          </td>
+          <td className="py-3 px-4">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" onClick={() => openEdit(delivery)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Editar
+              </Button>
+              {canReschedule ? (
+                <Button variant="ghost" size="sm" onClick={() => openReschedule([delivery.id])}>
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Remanejar
+                </Button>
+              ) : null}
+              <Button variant="ghost" size="sm" onClick={() => openGpsRoute(delivery.destinationAddress)}>
+                <Navigation className="mr-2 h-4 w-4" />
+                GPS
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => toggleExpanded(delivery.id)}>
+                {expanded ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+                {expanded ? "Recolher" : "Detalhes"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => deleteDelivery(delivery.id)}
+              >
+                Excluir
+              </Button>
+            </div>
+          </td>
+        </tr>
+        {expanded ? (
+          <tr className="border-b border-border bg-muted/20">
+            <td colSpan={6} className="px-4 py-4">
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="rounded-xl border border-border/60 bg-background p-4">
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Trajeto
+                  </div>
+                  <div className="mt-2 text-sm text-foreground">
+                    Origem: {delivery.originAddress}
+                  </div>
+                  <div className="mt-1 text-sm text-foreground">
+                    Destino: {delivery.destinationAddress}
+                  </div>
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    Motorista: {drivers.find((driver: any) => String(driver.id) === String(delivery.driverId))?.name || "Sem motorista"}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {delivery.notes || "Sem observacoes"}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border/60 bg-background p-4 lg:col-span-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Clock3 className="h-4 w-4 text-primary" />
+                    Historico de status
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {events.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                        Nenhum evento registrado ainda.
+                      </div>
+                    ) : (
+                      events.map((event: any) => (
+                        <div key={event.id} className="rounded-lg border border-border/60 p-3 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-medium text-foreground">
+                              {event.fromStatus || "inicio"} -> {event.toStatus}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatDateTime(event.recordedAt)}
+                            </div>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {event.latitude && event.longitude
+                              ? `GPS ${event.latitude}, ${event.longitude}`
+                              : "GPS nao capturado"}
+                            {event.accuracy ? ` • Precisao ${event.accuracy}m` : ""}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -441,8 +624,8 @@ export default function Deliveries() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Rota em revisão</p>
-            <p className="text-2xl font-semibold">{visibleDeliveries.filter((d: any) => d.routeOrder != null).length}</p>
+            <p className="text-sm text-muted-foreground">Em rota</p>
+            <p className="text-2xl font-semibold">{deliveriesInProgress.length}</p>
           </CardContent>
         </Card>
         <Card>
@@ -457,7 +640,7 @@ export default function Deliveries() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 lg:grid-cols-4">
+          <div className="grid gap-4 lg:grid-cols-5">
             <div className="flex-1 relative lg:col-span-2">
               <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
               <Input
@@ -467,6 +650,19 @@ export default function Deliveries() {
                 className="pl-10"
               />
             </div>
+            <Select value={driverFilter} onValueChange={setDriverFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filtrar por motorista" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os motoristas</SelectItem>
+                {drivers.map((driver: any) => (
+                  <SelectItem key={driver.id} value={String(driver.id)}>
+                    {driver.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div className="grid grid-cols-2 gap-2">
               <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
               <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
@@ -542,82 +738,7 @@ export default function Deliveries() {
                     </td>
                   </tr>
                 ) : (
-                  visibleDeliveries.map((delivery: any) => {
-                    const isSelected = selectedIds.includes(delivery.id);
-                    const canReschedule = delivery.status !== "entregue" && delivery.status !== "cancelado";
-
-                    return (
-                      <tr key={delivery.id} className="border-b border-border hover:bg-muted/50">
-                        <td className="py-3 px-4">
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={value => toggleSelected(delivery.id, Boolean(value))}
-                          />
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="font-medium">{delivery.clientName}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {delivery.originPostalCode || "-"}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-start gap-2 text-muted-foreground">
-                            <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                            <div>
-                              <div className="font-medium text-foreground">{delivery.destinationAddress}</div>
-                              <div className="text-xs">{delivery.destinationPostalCode || "-"}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <Select value={delivery.status} onValueChange={value => updateDeliveryStatus(delivery.id, value)}>
-                            <SelectTrigger className="w-44">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {DELIVERY_STATUSES.filter(status => status.value !== "all").map(status => (
-                                <SelectItem key={status.value} value={status.value}>
-                                  {status.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[delivery.status] || "bg-gray-100 text-gray-800"}`}>
-                            {DELIVERY_STATUSES.find(s => s.value === delivery.status)?.label ?? delivery.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-muted-foreground">
-                          <div>{delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "Sem agendamento"}</div>
-                          <div className="text-xs">Ordem: {delivery.routeOrder ?? "automática"}</div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => openEdit(delivery)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Editar
-                            </Button>
-                            {canReschedule ? (
-                              <Button variant="ghost" size="sm" onClick={() => openReschedule([delivery.id])}>
-                                <Calendar className="mr-2 h-4 w-4" />
-                                Remanejar
-                              </Button>
-                            ) : null}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openGpsRoute(delivery.destinationAddress)}
-                            >
-                              <Navigation className="mr-2 h-4 w-4" />
-                              GPS
-                            </Button>
-                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => deleteDelivery(delivery.id)}>
-                              Excluir
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
+                  visibleDeliveries.map((delivery: any) => <DeliveryRow key={delivery.id} delivery={delivery} />)
                 )}
               </tbody>
             </table>

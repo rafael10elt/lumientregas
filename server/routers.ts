@@ -13,6 +13,7 @@ import {
   createTenant,
   getDeliveries,
   getDeliveryById,
+  getDeliveryEvents,
   getDriverVehicles,
   getDrivers,
   getDriverById,
@@ -21,6 +22,7 @@ import {
   deleteTenant,
   getTenants,
   updateDelivery,
+  updateDeliveryStatus,
   updateDriver,
   updateDeliveriesOrder,
   updateDriverVehicle,
@@ -114,6 +116,36 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    updateStatus: tenantProtectedProcedure
+      .input(
+        z.object({
+          id: z.coerce.string(),
+          status: z.enum(["pendente", "em_rota", "entregue", "cancelado"]),
+          latitude: z.coerce.number().optional(),
+          longitude: z.coerce.number().optional(),
+          accuracy: z.coerce.number().optional(),
+          metadata: z.record(z.string(), z.any()).optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        await updateDeliveryStatus(
+          input.id,
+          {
+            status: input.status,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            accuracy: input.accuracy,
+            metadata: {
+              ...(input.metadata ?? {}),
+              actorRole: ctx.user?.role ?? null,
+            },
+            createdByUserId: ctx.user?.id ?? null,
+          },
+          ctx.accessToken
+        );
+        return { success: true };
+      }),
+
     delete: tenantProtectedProcedure
       .input(z.coerce.string())
       .mutation(async ({ input, ctx }) => {
@@ -175,6 +207,21 @@ export const appRouter = router({
         );
         return { success: true };
       }),
+  }),
+
+  deliveryEvents: router({
+    list: tenantProtectedProcedure
+      .input(
+        z
+          .object({
+            deliveryId: z.coerce.string().optional(),
+            driverId: z.coerce.string().optional(),
+            startDate: z.date().optional(),
+            endDate: z.date().optional(),
+          })
+          .optional()
+      )
+      .query(async ({ input, ctx }) => getDeliveryEvents(input, ctx.accessToken)),
   }),
 
   drivers: router({

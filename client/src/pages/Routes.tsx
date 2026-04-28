@@ -7,7 +7,7 @@ import { lookupCep } from "@/lib/cep";
 import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -25,6 +25,7 @@ export default function Routes() {
   const [routePlans, setRoutePlans] = useState<RoutePlans>({});
   const [activeDriverIds, setActiveDriverIds] = useState<string[]>([]);
   const [loadingBase, setLoadingBase] = useState(false);
+  const [draggingStop, setDraggingStop] = useState<{ driverId: string; index: number } | null>(null);
 
   const todayStart = useMemo(() => {
     const date = new Date();
@@ -47,10 +48,7 @@ export default function Routes() {
   const reorderMutation = trpc.deliveries.reorder.useMutation();
 
   const openDeliveries = useMemo(
-    () =>
-      deliveries.filter(
-        (delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"
-      ),
+    () => deliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"),
     [deliveries]
   );
 
@@ -63,9 +61,7 @@ export default function Routes() {
       byDriver.set(delivery.driverId, current);
     }
 
-    const result = drivers.filter((driver: any) =>
-      selectedDriverId === "all" ? true : driver.id === selectedDriverId
-    );
+    const result = drivers.filter((driver: any) => (selectedDriverId === "all" ? true : driver.id === selectedDriverId));
 
     return result.map((driver: any) => ({
       driver,
@@ -86,7 +82,7 @@ export default function Routes() {
       setBaseAddress(result.fullAddress);
       toast.success("Base preenchida com sucesso");
     } catch (error: any) {
-      toast.error(error?.message ?? "Não foi possível consultar o CEP");
+      toast.error(error?.message ?? "Nao foi possivel consultar o CEP");
     } finally {
       setLoadingBase(false);
     }
@@ -112,9 +108,9 @@ export default function Routes() {
         setActiveDriverIds(prev => [...prev, driverId]);
       }
 
-      toast.success("Rota gerada e pronta para revisão");
+      toast.success("Rota gerada e pronta para revisao");
     } catch (error: any) {
-      toast.error(error?.message ?? "Não foi possível gerar a rota");
+      toast.error(error?.message ?? "Nao foi possivel gerar a rota");
     }
   };
 
@@ -131,10 +127,29 @@ export default function Routes() {
     });
   };
 
+  const reorderStop = (driverId: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    setRoutePlans(prev => {
+      const plan = [...(prev[driverId] ?? [])];
+      if (fromIndex < 0 || fromIndex >= plan.length || toIndex < 0 || toIndex >= plan.length) {
+        return prev;
+      }
+
+      const [moved] = plan.splice(fromIndex, 1);
+      plan.splice(toIndex, 0, moved);
+
+      return {
+        ...prev,
+        [driverId]: plan.map((item, idx) => ({ ...item, routeOrder: idx + 1 })),
+      };
+    });
+  };
+
   const saveRoute = async (driverId: string) => {
     const plan = routePlans[driverId] ?? [];
     if (plan.length === 0) {
-      toast.error("Não há rota gerada para salvar");
+      toast.error("Nao ha rota gerada para salvar");
       return;
     }
 
@@ -152,7 +167,7 @@ export default function Routes() {
       toast.success("Rota salva com sucesso");
       refetch();
     } catch (error: any) {
-      toast.error(error?.message ?? "Não foi possível salvar a rota");
+      toast.error(error?.message ?? "Nao foi possivel salvar a rota");
     }
   };
 
@@ -167,9 +182,9 @@ export default function Routes() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Roteirização</h1>
+        <h1 className="text-3xl font-bold text-foreground">Roteirizacao</h1>
         <p className="text-muted-foreground mt-1">
-          Revisão de rotas automáticas, ordenação manual e base por CEP.
+          Revisao de rotas automaticas, ordenacao manual, arrastar e soltar e base por CEP.
         </p>
       </div>
 
@@ -177,7 +192,7 @@ export default function Routes() {
         <CardHeader>
           <CardTitle>Base operacional</CardTitle>
           <CardDescription>
-            Informe o CEP da origem para preencher o endereço completo automaticamente.
+            Informe o CEP da origem para preencher o endereco completo automaticamente.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-[1fr,2fr,auto]">
@@ -191,7 +206,7 @@ export default function Routes() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Endereço base</Label>
+            <Label>Endereco base</Label>
             <Input value={baseAddress} onChange={e => setBaseAddress(e.target.value)} />
           </div>
           <div className="flex items-end">
@@ -229,10 +244,16 @@ export default function Routes() {
                 onClick={() => {
                   setRoutePlans({});
                   setActiveDriverIds([]);
+                  setDraggingStop(null);
                 }}
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Limpar revisões
+                Limpar revisoes
+              </Button>
+            </div>
+            <div className="flex items-end">
+              <Button variant="outline" className="w-full" onClick={() => refetch()}>
+                Atualizar base
               </Button>
             </div>
           </div>
@@ -249,7 +270,9 @@ export default function Routes() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Motoristas com rota</p>
-            <p className="text-2xl font-semibold">{visibleDrivers.filter(entry => entry.deliveries.length > 0).length}</p>
+            <p className="text-2xl font-semibold">
+              {visibleDrivers.filter(entry => entry.deliveries.length > 0).length}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -276,18 +299,19 @@ export default function Routes() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <CardTitle>{driver.name}</CardTitle>
-                  <CardDescription>
-                    {driverDeliveries.length} entregas em aberto para hoje
-                  </CardDescription>
+                  <CardDescription>{driverDeliveries.length} entregas em aberto para hoje</CardDescription>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={() => generateRoute(driver.id)} disabled={driverDeliveries.length === 0}>
                     <Navigation className="mr-2 h-4 w-4" />
-                    Gerar rota automática
+                    Gerar rota automatica
                   </Button>
                   <Button variant="default" onClick={() => saveRoute(driver.id)} disabled={!hasPlan}>
                     <Save className="mr-2 h-4 w-4" />
-                    Salvar revisão
+                    Salvar revisao
+                  </Button>
+                  <Button variant="ghost" onClick={() => resetRoute(driver.id)} disabled={!hasPlan}>
+                    Limpar
                   </Button>
                 </div>
               </div>
@@ -295,66 +319,91 @@ export default function Routes() {
             <CardContent>
               {currentPlan.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-                  Nenhuma entrega atribuída para este motorista hoje.
+                  Nenhuma entrega atribuida para este motorista hoje.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {currentPlan.map((delivery: any, index: number) => (
-                    <div key={delivery.id} className="flex items-start gap-3 rounded-lg border p-4">
-                      <div className="flex flex-col items-center gap-2 pt-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => moveStop(driver.id, index, -1)}
-                          disabled={index === 0 || !hasPlan}
-                        >
-                          <ArrowUp className="h-4 w-4" />
-                        </Button>
-                        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
-                          {delivery.routeOrder ?? index + 1}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => moveStop(driver.id, index, 1)}
-                          disabled={index === currentPlan.length - 1 || !hasPlan}
-                        >
-                          <ArrowDown className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="font-semibold">{delivery.clientName}</div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              <MapPin className="h-4 w-4" />
-                              {delivery.destinationAddress}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {delivery.destinationPostalCode || "Sem CEP"} • Ordem{" "}
-                              {delivery.routeOrder ?? index + 1}
-                            </div>
+                  {currentPlan.map((delivery: any, index: number) => {
+                    const isDragging = draggingStop?.driverId === driver.id && draggingStop.index === index;
+
+                    return (
+                      <div
+                        key={delivery.id}
+                        className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${
+                          isDragging ? "border-primary bg-primary/5" : "bg-background"
+                        }`}
+                        draggable={hasPlan}
+                        onDragStart={() => setDraggingStop({ driverId: driver.id, index })}
+                        onDragEnd={() => setDraggingStop(null)}
+                        onDragOver={event => event.preventDefault()}
+                        onDrop={() => {
+                          if (!draggingStop || draggingStop.driverId !== driver.id) return;
+                          reorderStop(driver.id, draggingStop.index, index);
+                          setDraggingStop(null);
+                        }}
+                      >
+                        <div className="flex flex-col items-center gap-2 pt-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => moveStop(driver.id, index, -1)}
+                            disabled={index === 0 || !hasPlan}
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </Button>
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                            {delivery.routeOrder ?? index + 1}
                           </div>
-                          <div className="text-right text-xs text-muted-foreground">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="mb-2"
-                              onClick={() => openGpsRoute(delivery.destinationAddress)}
-                            >
-                              Abrir GPS
-                            </Button>
-                            <div>{delivery.scheduledAt ? new Date(delivery.scheduledAt).toLocaleString("pt-BR") : "Sem agendamento"}</div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => moveStop(driver.id, index, 1)}
+                            disabled={index === currentPlan.length - 1 || !hasPlan}
+                          >
+                            <ArrowDown className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              {delivery.distanceFromPreviousKm != null
-                                ? `${delivery.distanceFromPreviousKm} km da parada anterior`
-                                : "Distância em revisão"}
+                              <div className="flex items-center gap-2 font-semibold">
+                                <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                {delivery.clientName}
+                              </div>
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                <MapPin className="h-4 w-4" />
+                                {delivery.destinationAddress}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {delivery.destinationPostalCode || "Sem CEP"} • Ordem{" "}
+                                {delivery.routeOrder ?? index + 1}
+                              </div>
+                            </div>
+                            <div className="text-right text-xs text-muted-foreground">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="mb-2"
+                                onClick={() => openGpsRoute(delivery.destinationAddress)}
+                              >
+                                Abrir GPS
+                              </Button>
+                              <div>
+                                {delivery.scheduledAt
+                                  ? new Date(delivery.scheduledAt).toLocaleString("pt-BR")
+                                  : "Sem agendamento"}
+                              </div>
+                              <div>
+                                {delivery.distanceFromPreviousKm != null
+                                  ? `${delivery.distanceFromPreviousKm} km da parada anterior`
+                                  : "Distancia em revisao"}
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

@@ -1,6 +1,7 @@
 export type UserRole = "superadmin" | "admin" | "motorista";
 export type DriverStatus = "available" | "busy" | "offline";
 export type DeliveryStatus = "pendente" | "em_rota" | "entregue" | "cancelado";
+export type DeliveryEventType = "status_change";
 export type TenantStatus = "active" | "suspended";
 export type TenantPaymentStatus = "ok" | "pending" | "overdue";
 
@@ -199,6 +200,24 @@ export type Delivery = {
   updatedAt: Date;
 };
 
+export type DeliveryEvent = {
+  id: string;
+  tenantId: string;
+  deliveryId: string;
+  driverId: string | null;
+  createdByUserId: string | null;
+  eventType: DeliveryEventType;
+  fromStatus: DeliveryStatus | null;
+  toStatus: DeliveryStatus;
+  latitude: string | null;
+  longitude: string | null;
+  accuracy: string | null;
+  metadata: Record<string, unknown> | null;
+  recordedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type InsertDelivery = {
   clientId?: string | null;
   baseId?: string | null;
@@ -231,6 +250,23 @@ export type InsertDelivery = {
   notes?: string | null;
   distance?: string | null;
   estimatedTime?: string | null;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
+
+export type InsertDeliveryEvent = {
+  tenantId: string;
+  deliveryId: string;
+  driverId?: string | null;
+  createdByUserId?: string | null;
+  eventType?: DeliveryEventType;
+  fromStatus?: DeliveryStatus | null;
+  toStatus: DeliveryStatus;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  accuracy?: number | string | null;
+  metadata?: Record<string, unknown> | null;
+  recordedAt?: Date | string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
 };
