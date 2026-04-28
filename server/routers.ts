@@ -504,6 +504,7 @@ export const appRouter = router({
           email: z.string().email(),
           password: z.string().min(6).optional(),
           name: z.string().optional(),
+          status: z.enum(["active", "inactive"]).optional(),
           role: z.enum(["superadmin", "admin", "motorista"]).optional(),
           tenantId: z.coerce.string().optional(),
         })
@@ -543,6 +544,7 @@ export const appRouter = router({
           id: z.coerce.string(),
           name: z.string().optional(),
           email: z.string().optional(),
+          status: z.enum(["active", "inactive"]).optional(),
           role: z.enum(["superadmin", "admin", "motorista"]).optional(),
           loginMethod: z.string().optional(),
           tenantId: z.coerce.string().nullable().optional(),

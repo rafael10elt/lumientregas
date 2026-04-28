@@ -17,11 +17,13 @@ drop function if exists public.handle_new_auth_user() cascade;
 drop type if exists public.delivery_status cascade;
 drop type if exists public.delivery_event_type cascade;
 drop type if exists public.driver_status cascade;
+drop type if exists public.user_status cascade;
 drop type if exists public.user_role cascade;
 drop type if exists public.tenant_status cascade;
 drop type if exists public.tenant_payment_status cascade;
 
 create type public.user_role as enum ('superadmin', 'admin', 'motorista');
+create type public.user_status as enum ('active', 'inactive');
 create type public.driver_status as enum ('available', 'busy', 'offline');
 create type public.delivery_status as enum ('pendente', 'em_rota', 'entregue', 'cancelado');
 create type public.delivery_event_type as enum ('status_change');
@@ -72,6 +74,7 @@ begin
     name,
     email,
     "loginMethod",
+    status,
     role,
     "tenantId"
   )
@@ -81,6 +84,7 @@ begin
     profile_name,
     new.email,
     'supabase',
+    'active',
     'motorista',
     null
   )
@@ -119,6 +123,7 @@ create table public.users (
   name text,
   email text unique,
   "loginMethod" text,
+  status public.user_status not null default 'active',
   role public.user_role not null default 'motorista',
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now(),
@@ -432,6 +437,7 @@ create index if not exists tenants_status_idx on public.tenants (status);
 create index if not exists users_open_id_idx on public.users ("openId");
 create index if not exists users_auth_user_id_idx on public.users ("authUserId");
 create index if not exists users_tenant_id_idx on public.users ("tenantId");
+create index if not exists users_status_idx on public.users (status);
 create index if not exists drivers_tenant_id_idx on public.drivers ("tenantId");
 create index if not exists drivers_user_id_idx on public.drivers ("userId");
 create index if not exists driver_vehicles_tenant_id_idx on public.driver_vehicles ("tenantId");

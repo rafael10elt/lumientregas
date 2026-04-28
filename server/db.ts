@@ -81,6 +81,7 @@ function mapUser(row: Record<string, any>): User {
     name: row.name ?? null,
     email: row.email ?? null,
     loginMethod: row.loginMethod ?? null,
+    status: row.status ?? "active",
     role: row.role,
     createdAt: toDate(row.createdAt)!,
     updatedAt: toDate(row.updatedAt)!,
@@ -276,6 +277,7 @@ export async function ensureUserProfile(input: InsertUser): Promise<void> {
     name: input.name ?? null,
     email: input.email ?? null,
     loginMethod: input.loginMethod ?? "supabase",
+    status: input.status ?? "active",
     role: input.role ?? "motorista",
     lastSignedIn: toIsoString(input.lastSignedIn) ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -337,7 +339,7 @@ export async function getUsers(accessToken?: string | null) {
 export async function updateUser(
   id: string,
   updates: Partial<
-    Pick<InsertUser, "name" | "email" | "loginMethod" | "tenantId"> & { role: User["role"] }
+    Pick<InsertUser, "name" | "email" | "loginMethod" | "tenantId" | "status"> & { role: User["role"] }
   >,
   accessToken?: string | null
 ) {
@@ -362,6 +364,7 @@ export async function createAuthUser(input: {
   email: string;
   password?: string;
   name?: string | null;
+  status?: User["status"];
   role?: User["role"];
   tenantId?: string | null;
 }) {
@@ -391,6 +394,7 @@ export async function createAuthUser(input: {
     name: input.name ?? input.email,
     email: input.email,
     loginMethod: "supabase",
+    status: input.status ?? "active",
     role: input.role ?? "motorista",
   });
 
@@ -431,6 +435,18 @@ export async function deleteUserAccount(id: string, accessToken?: string | null)
 export async function getTenantById(id: string) {
   const db = createSupabaseAdminClient();
   const { data, error } = await db.from("tenants").select("*").eq("id", id).maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ? mapTenant(data) : null;
+}
+
+export async function getTenantBySlug(slug: string) {
+  const db = createSupabaseAdminClient();
+  const normalizedSlug = slug.trim().toLowerCase();
+  const { data, error } = await db.from("tenants").select("*").eq("slug", normalizedSlug).maybeSingle();
 
   if (error) {
     throw error;

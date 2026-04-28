@@ -79,21 +79,42 @@ export default function Drivers() {
   const tenantMotorists = useMemo(
     () =>
       [...users]
-        .filter((entry: any) => entry.role === "motorista")
+        .filter((entry: any) => entry.role === "motorista" && entry.status === "active")
         .sort((a: any, b: any) => String(a.name ?? a.email ?? "").localeCompare(String(b.name ?? b.email ?? ""))),
     [users]
   );
 
+  const selectedDriverUser = useMemo(
+    () => users.find((entry: any) => entry.id === formData.userId) ?? null,
+    [formData.userId, users]
+  );
+
+  const userOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const entry of tenantMotorists) {
+      map.set(entry.id, entry);
+    }
+    if (selectedDriverUser && !map.has(selectedDriverUser.id) && selectedDriverUser.role === "motorista") {
+      map.set(selectedDriverUser.id, selectedDriverUser);
+    }
+    return [...map.values()];
+  }, [selectedDriverUser, tenantMotorists]);
+
   const driverByUserId = useMemo(() => {
-    return new Map(tenantMotorists.map((entry: any) => [entry.id, entry]));
-  }, [tenantMotorists]);
+    return new Map(
+      [...users]
+        .filter((entry: any) => entry.role === "motorista")
+        .map((entry: any) => [entry.id, entry])
+    );
+  }, [users]);
 
   const vehiclesByDriverId = useMemo(() => {
     const map = new Map<string, any[]>();
     for (const vehicle of allVehicles as any[]) {
-      const current = map.get(vehicle.currentDriverId) ?? [];
+      const key = vehicle.currentDriverId ?? "__unassigned__";
+      const current = map.get(key) ?? [];
       current.push(vehicle);
-      map.set(vehicle.currentDriverId, current);
+      map.set(key, current);
     }
     return map;
   }, [allVehicles]);
@@ -292,9 +313,10 @@ export default function Drivers() {
                     <SelectValue placeholder="Selecione um motorista cadastrado" />
                   </SelectTrigger>
                   <SelectContent>
-                    {tenantMotorists.map((entry: any) => (
+                    {userOptions.map((entry: any) => (
                       <SelectItem key={entry.id} value={entry.id}>
                         {entry.name || entry.email || entry.id}
+                        {entry.status === "inactive" ? " (inativo)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

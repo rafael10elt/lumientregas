@@ -1,4 +1,5 @@
 export type UserRole = "superadmin" | "admin" | "motorista";
+export type UserStatus = "active" | "inactive";
 export type DriverStatus = "available" | "busy" | "offline";
 export type DeliveryStatus = "pendente" | "em_rota" | "entregue" | "cancelado";
 export type DeliveryEventType = "status_change";
@@ -42,6 +43,7 @@ export type User = {
   name: string | null;
   email: string | null;
   loginMethod: string | null;
+  status: UserStatus;
   role: UserRole;
   createdAt: Date;
   updatedAt: Date;
@@ -55,6 +57,7 @@ export type InsertUser = {
   name?: string | null;
   email?: string | null;
   loginMethod?: string | null;
+  status?: UserStatus;
   role?: UserRole;
   createdAt?: Date | string;
   updatedAt?: Date | string;

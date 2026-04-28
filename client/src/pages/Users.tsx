@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { Badge } from "@/components/ui/badge";
 import { Pencil, Plus, Trash2, Users as UsersIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type Role = "superadmin" | "admin" | "motorista";
+type UserStatus = "active" | "inactive";
 
 type UserForm = {
   name: string;
@@ -18,6 +20,7 @@ type UserForm = {
   password: string;
   role: Role;
   tenantId: string;
+  status: UserStatus;
 };
 
 const emptyForm: UserForm = {
@@ -26,12 +29,18 @@ const emptyForm: UserForm = {
   password: "",
   role: "motorista",
   tenantId: "",
+  status: "active",
 };
 
 const ROLE_LABELS: Record<Role, string> = {
   superadmin: "Superadmin",
   admin: "Admin",
   motorista: "Motorista",
+};
+
+const STATUS_LABELS: Record<UserStatus, string> = {
+  active: "Ativo",
+  inactive: "Inativo",
 };
 
 export default function Users() {
@@ -85,6 +94,7 @@ export default function Users() {
       password: "",
       role: entry.role ?? "motorista",
       tenantId: entry.tenantId ?? "",
+      status: entry.status ?? "active",
     });
     setOpen(true);
   };
@@ -106,6 +116,7 @@ export default function Users() {
           id: editingId,
           name: formData.name || undefined,
           email: formData.email,
+          status: formData.status,
           role: formData.role,
           tenantId: formData.tenantId || undefined,
         });
@@ -115,6 +126,7 @@ export default function Users() {
           name: formData.name || undefined,
           email: formData.email,
           password: formData.password || undefined,
+          status: formData.status,
           role: formData.role,
           tenantId: formData.tenantId || undefined,
         });
@@ -139,6 +151,19 @@ export default function Users() {
       refetch();
     } catch {
       toast.error("Não foi possível remover o usuário");
+    }
+  };
+
+  const toggleUserStatus = async (entry: any) => {
+    try {
+      await updateMutation.mutateAsync({
+        id: entry.id,
+        status: entry.status === "active" ? "inactive" : "active",
+      });
+      toast.success(`Usuário ${entry.status === "active" ? "inativado" : "ativado"}`);
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível alterar o status");
     }
   };
 
@@ -230,6 +255,23 @@ export default function Users() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={value =>
+                    setFormData(prev => ({ ...prev, status: value as UserStatus }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="inactive">Inativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {user?.role === "superadmin" && formData.role !== "superadmin" ? (
                 <div className="space-y-2">
                   <Label>Tenant</Label>
@@ -259,7 +301,7 @@ export default function Users() {
         </Dialog>
       </div>
 
-      <div className={`grid gap-4 ${isSuperadmin ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
+      <div className={`grid gap-4 ${isSuperadmin ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -297,6 +339,14 @@ export default function Users() {
             </p>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Inativos</p>
+            <p className="text-2xl font-semibold">
+              {visibleUsers.filter((entry: any) => entry.status === "inactive").length}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -314,6 +364,7 @@ export default function Users() {
                   <th className="px-4 py-3 text-left text-muted-foreground">Nome</th>
                   <th className="px-4 py-3 text-left text-muted-foreground">E-mail</th>
                   <th className="px-4 py-3 text-left text-muted-foreground">Perfil</th>
+                  <th className="px-4 py-3 text-left text-muted-foreground">Status</th>
                   {isSuperadmin ? (
                     <>
                       <th className="px-4 py-3 text-left text-muted-foreground">Tenant</th>
@@ -337,6 +388,11 @@ export default function Users() {
                       <td className="px-4 py-3 text-muted-foreground">
                         {ROLE_LABELS[entry.role as Role] ?? entry.role}
                       </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={entry.status === "active" ? "default" : "secondary"}>
+                          {STATUS_LABELS[entry.status as UserStatus] ?? entry.status}
+                        </Badge>
+                      </td>
                       {isSuperadmin ? (
                         <>
                           <td className="px-4 py-3 text-muted-foreground">{tenantLabel}</td>
@@ -349,6 +405,11 @@ export default function Users() {
                             <Button variant="ghost" size="sm" onClick={() => openEdit(entry)}>
                               <Pencil className="mr-2 h-4 w-4" />
                               Editar
+                            </Button>
+                          ) : null}
+                          {entry.role !== "superadmin" ? (
+                            <Button variant="ghost" size="sm" onClick={() => toggleUserStatus(entry)}>
+                              {entry.status === "active" ? "Inativar" : "Ativar"}
                             </Button>
                           ) : null}
                           {entry.role !== "superadmin" ? (

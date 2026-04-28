@@ -43,19 +43,25 @@ export async function createContext(
             name: data.user.user_metadata?.full_name ?? data.user.user_metadata?.name ?? data.user.email ?? null,
             email: data.user.email ?? null,
             loginMethod: "supabase",
+            status: "active",
             role: superadminExists ? "motorista" : "superadmin",
           });
           user = (await getUserByAuthUserId(data.user.id)) ?? null;
         } else if (user.role !== "superadmin" && !user.tenantId && !superadminExists) {
-          await updateUser(user.id, { role: "superadmin" });
+          await updateUser(user.id, { role: "superadmin", status: "active" });
           user = (await getUserByAuthUserId(data.user.id)) ?? null;
+        }
+
+        if (user?.status === "inactive") {
+          accessBlocked = true;
+          accessBlockedReason = "Seu usuário está inativo. Fale com o administrador do sistema.";
         }
 
         if (user?.tenantId) {
           tenant = await getTenantById(user.tenantId);
         }
 
-        if (user && user.role !== "superadmin") {
+        if (user && user.role !== "superadmin" && !accessBlocked) {
           if (!user.tenantId) {
             accessBlocked = true;
             accessBlockedReason = "Usuário sem tenant vinculado.";

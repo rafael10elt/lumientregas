@@ -12,6 +12,7 @@ type AuthSession = {
     name: string | null;
     email: string | null;
     loginMethod: string | null;
+    status: "active" | "inactive";
     role: "superadmin" | "admin" | "motorista";
   } | null;
   tenant: {
