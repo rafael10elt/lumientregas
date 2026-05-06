@@ -9,7 +9,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Dashboard from "./pages/Dashboard";
 import Deliveries from "./pages/Deliveries";
 import Bases from "./pages/Bases";
-import Drivers from "./pages/Drivers";
+import Vehicles from "./pages/Vehicles";
 import Users from "./pages/Users";
 import Routes from "./pages/Routes";
 import Analytics from "./pages/Analytics";
@@ -65,7 +65,7 @@ function Router() {
 
   useEffect(() => {
     if (!user) return;
-    const tenantPages = ["/", "/deliveries", "/bases", "/drivers", "/routes", "/analytics"];
+    const tenantPages = ["/", "/deliveries", "/bases", "/vehicles", "/routes", "/analytics"];
     const saasPages = ["/tenants", "/users"];
 
     if (user.role === "motorista") {
@@ -84,6 +84,11 @@ function Router() {
       if (saasPages.includes(location)) return;
       if (location === "/driver") return;
       setLocation("/tenants");
+      return;
+    }
+
+    if (location === "/drivers") {
+      setLocation("/vehicles");
       return;
     }
 
@@ -144,7 +149,8 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/deliveries" component={Deliveries} />
         <Route path="/bases" component={Bases} />
-        <Route path="/drivers" component={Drivers} />
+        <Route path="/vehicles" component={Vehicles} />
+        <Route path="/drivers" component={Vehicles} />
         <Route path="/users" component={Users} />
         <Route path="/routes" component={Routes} />
         <Route path="/driver" component={DriverPortal} />

@@ -336,6 +336,72 @@ export async function getUsers(accessToken?: string | null) {
   return (data ?? []).map(mapUser);
 }
 
+async function ensureDriverProfileForUser(user: User, accessToken?: string | null) {
+  if (user.role !== "motorista" || user.status !== "active" || !user.tenantId) {
+    return null;
+  }
+
+  const db = clientFor(accessToken);
+  const { data: existing, error: existingError } = await db
+    .from("drivers")
+    .select("*")
+    .eq("userId", user.id)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  const payload = removeUndefined({
+    tenantId: user.tenantId,
+    userId: user.id,
+    name: user.name ?? user.email ?? "Motorista",
+    email: user.email ?? null,
+    status: existing?.status ?? "available",
+    updatedAt: new Date().toISOString(),
+  });
+
+  if (existing) {
+    const { data, error } = await db
+      .from("drivers")
+      .update(payload)
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data ? mapDriver(data) : null;
+  }
+
+  const { data, error } = await db
+    .from("drivers")
+    .insert({
+      ...payload,
+      createdAt: new Date().toISOString(),
+      status: "available",
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ? mapDriver(data) : null;
+}
+
+async function syncDriverProfilesFromActiveMotorists(accessToken?: string | null) {
+  const users = await getUsers(accessToken);
+  const motorists = users.filter(user => user.role === "motorista" && user.status === "active" && user.tenantId);
+
+  for (const user of motorists) {
+    await ensureDriverProfileForUser(user, accessToken);
+  }
+}
+
 export async function updateUser(
   id: string,
   updates: Partial<
@@ -498,6 +564,25 @@ export async function updateTenant(id: string, updates: Partial<InsertTenant>, a
 
   if (error) {
     throw error;
+  }
+
+  if (updates.role === "motorista" || updates.status === "active" || updates.tenantId !== undefined) {
+    const { data: currentUser, error: currentUserError } = await db
+      .from("users")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (currentUserError) {
+      throw currentUserError;
+    }
+
+    if (currentUser) {
+      const mappedUser = mapUser(currentUser);
+      if (mappedUser.role === "motorista" && mappedUser.status === "active") {
+        await ensureDriverProfileForUser(mappedUser, accessToken);
+      }
+    }
   }
 }
 
@@ -1059,6 +1144,7 @@ export async function updateDeliveriesOrder(
 
 export async function getDrivers(accessToken?: string | null) {
   const db = clientFor(accessToken);
+  await syncDriverProfilesFromActiveMotorists(accessToken);
   const { data, error } = await db.from("drivers").select("*").order("name", { ascending: true });
   if (error) throw error;
   return (data ?? []).map(mapDriver);

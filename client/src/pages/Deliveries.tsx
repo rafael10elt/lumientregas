@@ -115,6 +115,7 @@ export default function Deliveries() {
 
   const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(queryInput);
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const { data: users = [] } = trpc.users.list.useQuery();
   const { data: bases = [] } = trpc.operationalBases.list.useQuery();
   const createMutation = trpc.deliveries.create.useMutation();
   const updateMutation = trpc.deliveries.update.useMutation();
@@ -138,6 +139,69 @@ export default function Deliveries() {
       return String(aKey).localeCompare(String(bKey));
     });
   }, [deliveries, searchTerm]);
+
+  const activeDriverIds = useMemo(
+    () =>
+      new Set(
+        users
+          .filter((user: any) => user.role === "motorista" && user.status === "active")
+          .map((user: any) => user.id)
+      ),
+    [users]
+  );
+
+  const activeDrivers = useMemo(
+    () => drivers.filter((driver: any) => driver.userId && activeDriverIds.has(driver.userId)),
+    [activeDriverIds, drivers]
+  );
+
+  const selectedFormDriver = useMemo(
+    () => drivers.find((driver: any) => String(driver.id) === String(formData.driverId)) ?? null,
+    [drivers, formData.driverId]
+  );
+
+  const selectedRescheduleDriver = useMemo(
+    () => drivers.find((driver: any) => String(driver.id) === String(rescheduleForm.driverId)) ?? null,
+    [drivers, rescheduleForm.driverId]
+  );
+
+  const selectedFilterDriver = useMemo(
+    () => drivers.find((driver: any) => String(driver.id) === String(driverFilter)) ?? null,
+    [driverFilter, drivers]
+  );
+
+  const deliveryDriverOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const driver of activeDrivers) {
+      map.set(driver.id, driver);
+    }
+    if (selectedFormDriver) {
+      map.set(selectedFormDriver.id, selectedFormDriver);
+    }
+    return [...map.values()];
+  }, [activeDrivers, selectedFormDriver]);
+
+  const rescheduleDriverOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const driver of activeDrivers) {
+      map.set(driver.id, driver);
+    }
+    if (selectedRescheduleDriver) {
+      map.set(selectedRescheduleDriver.id, selectedRescheduleDriver);
+    }
+    return [...map.values()];
+  }, [activeDrivers, selectedRescheduleDriver]);
+
+  const driverFilterOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const driver of activeDrivers) {
+      map.set(driver.id, driver);
+    }
+    if (selectedFilterDriver) {
+      map.set(selectedFilterDriver.id, selectedFilterDriver);
+    }
+    return [...map.values()];
+  }, [activeDrivers, selectedFilterDriver]);
 
   const selectedDeliveries = visibleDeliveries.filter((delivery: any) => selectedIds.includes(delivery.id));
   const openDeliveries = visibleDeliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado");
@@ -668,14 +732,14 @@ export default function Deliveries() {
               </div>
 
               <div className="space-y-2">
-                <Label>Motorista</Label>
+                <Label>Motorista ativo</Label>
                 <Select value={formData.driverId || "unassigned"} onValueChange={value => setFormData(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione um motorista" />
+                    <SelectValue placeholder="Selecione um motorista ativo" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassigned">Sem motorista</SelectItem>
-                    {drivers.map((driver: any) => (
+                    {deliveryDriverOptions.map((driver: any) => (
                       <SelectItem key={driver.id} value={String(driver.id)}>
                         {driver.name}
                       </SelectItem>
@@ -753,11 +817,11 @@ export default function Deliveries() {
             </div>
             <Select value={driverFilter} onValueChange={setDriverFilter}>
               <SelectTrigger>
-                <SelectValue placeholder="Filtrar por motorista" />
+                <SelectValue placeholder="Filtrar por motorista ativo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os motoristas</SelectItem>
-                {drivers.map((driver: any) => (
+                <SelectItem value="all">Todos os motoristas ativos</SelectItem>
+                {driverFilterOptions.map((driver: any) => (
                   <SelectItem key={driver.id} value={String(driver.id)}>
                     {driver.name}
                   </SelectItem>
@@ -857,14 +921,14 @@ export default function Deliveries() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Motorista</Label>
+              <Label>Motorista ativo</Label>
               <Select value={rescheduleForm.driverId || "unassigned"} onValueChange={value => setRescheduleForm(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione um motorista" />
+                  <SelectValue placeholder="Selecione um motorista ativo" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Manter motorista atual</SelectItem>
-                  {drivers.map((driver: any) => (
+                  {rescheduleDriverOptions.map((driver: any) => (
                     <SelectItem key={driver.id} value={String(driver.id)}>
                       {driver.name}
                     </SelectItem>

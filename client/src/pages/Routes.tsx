@@ -45,6 +45,7 @@ export default function Routes() {
     endDate: todayEnd,
   });
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const { data: users = [] } = trpc.users.list.useQuery();
   const { data: bases = [] } = trpc.operationalBases.list.useQuery();
   const optimizeMutation = trpc.routes.optimize.useMutation();
   const reorderMutation = trpc.deliveries.reorder.useMutation();
@@ -59,6 +60,37 @@ export default function Routes() {
     [deliveries]
   );
 
+  const activeMotoristUserIds = useMemo(
+    () =>
+      new Set(
+        users
+          .filter((user: any) => user.role === "motorista" && user.status === "active")
+          .map((user: any) => user.id)
+      ),
+    [users]
+  );
+
+  const activeDrivers = useMemo(
+    () => drivers.filter((driver: any) => driver.userId && activeMotoristUserIds.has(driver.userId)),
+    [activeMotoristUserIds, drivers]
+  );
+
+  const selectedDriverOption = useMemo(
+    () => drivers.find((driver: any) => String(driver.id) === String(selectedDriverId)) ?? null,
+    [drivers, selectedDriverId]
+  );
+
+  const driverOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const driver of activeDrivers) {
+      map.set(driver.id, driver);
+    }
+    if (selectedDriverOption && selectedDriverId !== "all") {
+      map.set(selectedDriverOption.id, selectedDriverOption);
+    }
+    return [...map.values()];
+  }, [activeDrivers, selectedDriverId, selectedDriverOption]);
+
   const visibleDrivers = useMemo(() => {
     const byDriver = new Map<string, RoutePlanItem[]>();
     for (const delivery of openDeliveries) {
@@ -68,13 +100,13 @@ export default function Routes() {
       byDriver.set(delivery.driverId, current);
     }
 
-    const result = drivers.filter((driver: any) => (selectedDriverId === "all" ? true : driver.id === selectedDriverId));
+    const result = driverOptions.filter((driver: any) => (selectedDriverId === "all" ? true : driver.id === selectedDriverId));
 
     return result.map((driver: any) => ({
       driver,
       deliveries: byDriver.get(driver.id) ?? [],
     }));
-  }, [drivers, openDeliveries, selectedDriverId]);
+  }, [driverOptions, openDeliveries, selectedDriverId]);
 
   const fillBaseFromCep = async () => {
     if (!basePostalCode) {
@@ -278,14 +310,14 @@ export default function Routes() {
         <CardContent className="pt-6">
           <div className="grid gap-4 lg:grid-cols-4">
             <div className="space-y-2 lg:col-span-2">
-              <Label>Motorista</Label>
+              <Label>Motorista ativo</Label>
               <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Todos os motoristas" />
+                  <SelectValue placeholder="Todos os motoristas ativos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos os motoristas</SelectItem>
-                  {drivers.map((driver: any) => (
+                  <SelectItem value="all">Todos os motoristas ativos</SelectItem>
+                  {driverOptions.map((driver: any) => (
                     <SelectItem key={driver.id} value={String(driver.id)}>
                       {driver.name}
                     </SelectItem>
@@ -325,7 +357,7 @@ export default function Routes() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Motoristas com rota</p>
+            <p className="text-sm text-muted-foreground">Motoristas ativos com rota</p>
             <p className="text-2xl font-semibold">
               {visibleDrivers.filter(entry => entry.deliveries.length > 0).length}
             </p>

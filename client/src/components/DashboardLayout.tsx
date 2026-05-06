@@ -20,19 +20,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import {
-  CarFront,
-  LayoutDashboard,
-  LogOut,
-  Package2,
-  PanelLeft,
-  Shield,
-  MapPinned,
-  Truck,
-  TrendingUp,
-  UserCog,
-  Users,
-} from "lucide-react";
+import { LayoutDashboard, LogOut, Package2, PanelLeft, Shield, MapPinned, Truck, TrendingUp, UserCog, Users } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -43,7 +31,7 @@ const operationalMenuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Package2, label: "Entregas", path: "/deliveries" },
   { icon: MapPinned, label: "Bases", path: "/bases" },
-  { icon: CarFront, label: "Motoristas", path: "/drivers" },
+  { icon: Truck, label: "Veículos", path: "/vehicles" },
   { icon: UserCog, label: "Usuários", path: "/users" },
   { icon: Truck, label: "Rotas", path: "/routes" },
   { icon: TrendingUp, label: "Analytics", path: "/analytics" },
