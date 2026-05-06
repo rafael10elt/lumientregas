@@ -110,6 +110,7 @@ export default function Routes() {
   const [routePlans, setRoutePlans] = useState<RoutePlans>({});
   const [activeDriverIds, setActiveDriverIds] = useState<string[]>([]);
   const [loadingBase, setLoadingBase] = useState(false);
+  const [loadingEditCep, setLoadingEditCep] = useState<"origin" | "destination" | null>(null);
   const [draggingStop, setDraggingStop] = useState<{ driverId: string; index: number } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
@@ -226,6 +227,38 @@ export default function Routes() {
     if (!base) return;
     setBasePostalCode(base.postalCode || "");
     setBaseAddress([base.street, base.number, base.neighborhood, base.city, base.state].filter(Boolean).join(", "));
+  };
+
+  const fillEditCep = async (type: "origin" | "destination") => {
+    const cep =
+      type === "origin" ? editForm.originPostalCode : editForm.destinationPostalCode;
+    if (!cep) {
+      toast.error("Informe um CEP");
+      return;
+    }
+
+    setLoadingEditCep(type);
+    try {
+      const result = await lookupCep(cep);
+      if (type === "origin") {
+        setEditForm(prev => ({
+          ...prev,
+          originPostalCode: result.cep,
+          originAddress: result.fullAddress,
+        }));
+      } else {
+        setEditForm(prev => ({
+          ...prev,
+          destinationPostalCode: result.cep,
+          destinationAddress: result.fullAddress,
+        }));
+      }
+      toast.success("CEP localizado com sucesso");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao consultar CEP");
+    } finally {
+      setLoadingEditCep(null);
+    }
   };
 
   useEffect(() => {
@@ -379,6 +412,30 @@ export default function Routes() {
         status: editForm.status,
       });
       toast.success("Entrega atualizada");
+      setRoutePlans(prev => ({
+        ...prev,
+        ...(editForm.driverId
+          ? {
+              [editForm.driverId]: (prev[editForm.driverId] ?? []).map(item =>
+                String(item.id) === String(editingDeliveryId)
+                  ? {
+                      ...item,
+                      clientName: editForm.clientName,
+                      clientPhone: editForm.clientPhone,
+                      baseId: editForm.baseId || null,
+                      originPostalCode: editForm.originPostalCode || null,
+                      originAddress: editForm.originAddress,
+                      destinationPostalCode: editForm.destinationPostalCode || null,
+                      destinationAddress: editForm.destinationAddress,
+                      notes: editForm.notes || null,
+                      scheduledAt: editForm.scheduledAt,
+                      status: editForm.status,
+                    }
+                  : item
+              ),
+            }
+          : {}),
+      }));
       setEditOpen(false);
       setEditingDeliveryId(null);
       refetch();
@@ -476,6 +533,15 @@ export default function Routes() {
                   ))}
                 </SelectContent>
               </Select>
+              {editForm.baseId ? (
+                <p className="text-xs text-muted-foreground">
+                  {(() => {
+                    const base = bases.find((entry: any) => String(entry.id) === String(editForm.baseId));
+                    if (!base) return "";
+                    return `${base.street}, ${base.number || "-"} - ${base.city}/${base.state}`;
+                  })()}
+                </p>
+              ) : null}
             </div>
             <div className="flex items-end">
               <Button
@@ -682,7 +748,7 @@ export default function Routes() {
           <DialogHeader>
             <DialogTitle>Editar Entrega</DialogTitle>
             <DialogDescription>
-              Ajuste os dados operacionais da entrega sem sair da tela de rotas.
+              Informe os dados da coleta e da entrega. O CEP pode preencher o endereço automaticamente.
             </DialogDescription>
           </DialogHeader>
 
@@ -733,22 +799,49 @@ export default function Routes() {
 
             <div className="space-y-2">
               <Label>CEP de origem</Label>
-              <Input
-                value={editForm.originPostalCode}
-                onChange={e =>
-                  setEditForm(prev => ({ ...prev, originPostalCode: formatCep(e.target.value) }))
-                }
-              />
+              <div className="flex gap-2">
+                <Input
+                  placeholder="00000-000"
+                  value={editForm.originPostalCode}
+                  onChange={e =>
+                    setEditForm(prev => ({ ...prev, originPostalCode: formatCep(e.target.value) }))
+                  }
+                  inputMode="numeric"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fillEditCep("origin")}
+                  disabled={loadingEditCep === "origin"}
+                >
+                  Consultar
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label>CEP de destino</Label>
-              <Input
-                value={editForm.destinationPostalCode}
-                onChange={e =>
-                  setEditForm(prev => ({ ...prev, destinationPostalCode: formatCep(e.target.value) }))
-                }
-              />
+              <div className="flex gap-2">
+                <Input
+                  placeholder="00000-000"
+                  value={editForm.destinationPostalCode}
+                  onChange={e =>
+                    setEditForm(prev => ({
+                      ...prev,
+                      destinationPostalCode: formatCep(e.target.value),
+                    }))
+                  }
+                  inputMode="numeric"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fillEditCep("destination")}
+                  disabled={loadingEditCep === "destination"}
+                >
+                  Consultar
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">
