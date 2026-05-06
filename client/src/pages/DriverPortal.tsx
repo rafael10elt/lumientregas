@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/ConfirmProvider";
 
 const DELIVERY_STATUSES = [
   { value: "pendente", label: "Pendente" },
@@ -48,6 +49,28 @@ function isToday(value: string | Date | null | undefined) {
   return date.toDateString() === today.toDateString();
 }
 
+const STATUS_PRIORITY: Record<string, number> = {
+  em_rota: 0,
+  pendente: 1,
+  entregue: 2,
+  cancelado: 3,
+};
+
+function compareDeliveries(a: any, b: any) {
+  const statusDiff = (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99);
+  if (statusDiff !== 0) return statusDiff;
+
+  const routeOrderA = a.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  const routeOrderB = b.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  if (routeOrderA !== routeOrderB) return routeOrderA - routeOrderB;
+
+  const scheduledA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  const scheduledB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  if (scheduledA !== scheduledB) return scheduledA - scheduledB;
+
+  return String(a.clientName ?? "").localeCompare(String(b.clientName ?? ""));
+}
+
 function DriverDeliveryCard({
   delivery,
   onStatusChange,
@@ -56,6 +79,7 @@ function DriverDeliveryCard({
   onStatusChange: (deliveryId: string, status: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const isLocked = delivery.status === "entregue" || delivery.status === "cancelado";
   const { data: events = [] } = trpc.deliveryEvents.list.useQuery(
     { deliveryId: delivery.id },
     { enabled: expanded }
@@ -65,7 +89,12 @@ function DriverDeliveryCard({
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <div className="rounded-2xl border border-border/70 bg-background shadow-sm transition-shadow hover:shadow-md">
+      <div
+        className={[
+          "rounded-2xl border border-border/70 bg-background shadow-sm transition-shadow hover:shadow-md",
+          isLocked ? "opacity-60 grayscale" : "",
+        ].join(" ")}
+      >
         <div className="flex flex-col gap-4 p-4 md:flex-row md:items-start md:justify-between">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -107,6 +136,7 @@ function DriverDeliveryCard({
                   size="sm"
                   variant={delivery.status === status.value ? "default" : "outline"}
                   className="justify-start"
+                  disabled={isLocked}
                   onClick={() => onStatusChange(delivery.id, status.value)}
                 >
                   {status.label}
@@ -126,7 +156,12 @@ function DriverDeliveryCard({
                 <Navigation className="h-4 w-4" />
                 GPS
               </Button>
-              <Button variant="outline" className="gap-2" onClick={() => onStatusChange(delivery.id, delivery.status)}>
+              <Button
+                variant="outline"
+                className="gap-2"
+                disabled={isLocked}
+                onClick={() => onStatusChange(delivery.id, delivery.status)}
+              >
                 <Route className="h-4 w-4" />
                 Registrar
               </Button>
@@ -206,6 +241,7 @@ function DriverDeliveryCard({
 
 export default function DriverPortal() {
   const { user, loading } = useAuth();
+  const { confirm } = useConfirm();
   const { data: driver = null } = trpc.drivers.me.useQuery(undefined, {
     enabled: Boolean(user),
   });
@@ -221,11 +257,33 @@ export default function DriverPortal() {
 
   const updateStatusMutation = trpc.deliveries.updateStatus.useMutation();
 
-  const todayDeliveries = deliveries.filter((delivery: any) => isToday(delivery.scheduledAt));
-  const historyDeliveries = deliveries.filter((delivery: any) => !isToday(delivery.scheduledAt));
+  const todayDeliveries = deliveries
+    .filter((delivery: any) => isToday(delivery.scheduledAt))
+    .slice()
+    .sort(compareDeliveries);
+  const historyDeliveries = deliveries
+    .filter((delivery: any) => !isToday(delivery.scheduledAt))
+    .slice()
+    .sort(compareDeliveries);
   const primaryVehicle = vehicles.find((vehicle: any) => vehicle.isPrimary) ?? vehicles[0] ?? null;
 
   const updateStatus = async (deliveryId: string, status: string) => {
+    const delivery = deliveries.find((item: any) => item.id === deliveryId);
+    if (delivery && (delivery.status === "entregue" || delivery.status === "cancelado")) {
+      toast.error("Esta entrega nao pode mais ser alterada pelo motorista");
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: "Confirmar atualização de status",
+      description: "Deseja realmente alterar o status desta entrega? Esta ação registrará a sua localização no momento da atualização.",
+      confirmLabel: "Sim, atualizar",
+      cancelLabel: "Cancelar",
+      destructive: status === "cancelado",
+    });
+
+    if (!confirmed) return;
+
     try {
       const location = await captureCurrentLocation();
       await updateStatusMutation.mutateAsync({
@@ -298,10 +356,6 @@ export default function DriverPortal() {
               WhatsApp do motorista
             </Button>
           ) : null}
-          <Button variant="outline" className="gap-2" onClick={() => openGpsRoute("Lumi Entregas")}>
-            <MapPin className="h-4 w-4" />
-            Abrir no GPS
-          </Button>
         </div>
       </div>
 
