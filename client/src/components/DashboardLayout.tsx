@@ -208,16 +208,6 @@ function DashboardLayoutContent({
           </SidebarContent>
 
           <SidebarFooter className="p-3">
-            <div className="mb-3 rounded-lg border border-border bg-muted/30 p-3">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Shield className="h-3.5 w-3.5" />
-                <span>{user?.role || "-"}</span>
-              </div>
-              <p className="mt-1 truncate text-sm font-medium">{user?.name || "-"}</p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {user?.role === "superadmin" ? "Acesso SaaS" : tenant?.name || "Sem tenant"}
-              </p>
-            </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:justify-center">
@@ -227,6 +217,9 @@ function DashboardLayoutContent({
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+                    <p className="truncate text-xs text-muted-foreground">
+                      {user?.role || "-"} {user?.role === "superadmin" ? "• Acesso SaaS" : tenant?.name ? `• ${tenant.name}` : ""}
+                    </p>
                     <p className="truncate text-sm font-medium leading-none">{user?.name || "-"}</p>
                     <p className="mt-1.5 truncate text-xs text-muted-foreground">
                       {user?.email || "-"}

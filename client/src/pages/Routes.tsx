@@ -417,6 +417,7 @@ export default function Routes() {
         {visibleDrivers.map(({ driver, deliveries: driverDeliveries, previewDeliveries }: any) => {
           const currentPlan = previewDeliveries;
           const hasPlan = Boolean(routePlans[driver.id]);
+          const plannedCount = routePlans[driver.id]?.length ?? 0;
           const openDriverDeliveries = driverDeliveries.filter(
             (delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"
           );
