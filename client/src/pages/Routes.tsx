@@ -1,8 +1,10 @@
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatDateTime } from "@/lib/datetime";
 import { lookupCep } from "@/lib/cep";
 import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
@@ -51,7 +53,10 @@ export default function Routes() {
   const reorderMutation = trpc.deliveries.reorder.useMutation();
 
   const selectedBase = useMemo(
-    () => (selectedBaseId === "auto" ? bases.find((base: any) => base.isPrimary) ?? bases[0] : bases.find((base: any) => String(base.id) === selectedBaseId) ?? null),
+    () =>
+      selectedBaseId === "auto"
+        ? bases.find((base: any) => base.isPrimary) ?? bases[0]
+        : bases.find((base: any) => String(base.id) === selectedBaseId) ?? null,
     [bases, selectedBaseId]
   );
 
@@ -130,9 +135,7 @@ export default function Routes() {
   const syncBaseFromSelection = (base: any) => {
     if (!base) return;
     setBasePostalCode(base.postalCode || "");
-    setBaseAddress(
-      [base.street, base.number, base.neighborhood, base.city, base.state].filter(Boolean).join(", ")
-    );
+    setBaseAddress([base.street, base.number, base.neighborhood, base.city, base.state].filter(Boolean).join(", "));
   };
 
   useEffect(() => {
@@ -155,6 +158,7 @@ export default function Routes() {
         [driverId]: (data?.deliveries ?? []).map((delivery: any) => ({
           ...delivery,
           routeOrder: delivery.routeOrder,
+          distanceFromPreviousKm: delivery.distanceFromPreviousKm,
         })),
       }));
 
@@ -237,7 +241,7 @@ export default function Routes() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Roteirizacao</h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="mt-1 text-muted-foreground">
           Revisao de rotas automaticas, ordenacao manual, arrastar e soltar e base por CEP.
         </p>
       </div>
@@ -245,9 +249,7 @@ export default function Routes() {
       <Card>
         <CardHeader>
           <CardTitle>Base operacional</CardTitle>
-          <CardDescription>
-            Escolha a base principal do dia ou ajuste manualmente a origem da rota.
-          </CardDescription>
+          <CardDescription>Escolha a base principal do dia ou ajuste manualmente a origem da rota.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-[1fr,2fr,auto]">
           <div className="space-y-2 md:col-span-3">
@@ -269,7 +271,7 @@ export default function Routes() {
                 <SelectValue placeholder="Escolha a base principal" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="auto">Base principal automática</SelectItem>
+                <SelectItem value="auto">Base principal automatica</SelectItem>
                 {bases.map((base: any) => (
                   <SelectItem key={base.id} value={String(base.id)}>
                     {base.name}
@@ -358,9 +360,7 @@ export default function Routes() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Motoristas ativos com rota</p>
-            <p className="text-2xl font-semibold">
-              {visibleDrivers.filter(entry => entry.deliveries.length > 0).length}
-            </p>
+            <p className="text-2xl font-semibold">{visibleDrivers.filter(entry => entry.deliveries.length > 0).length}</p>
           </CardContent>
         </Card>
         <Card>
@@ -377,19 +377,27 @@ export default function Routes() {
         </Card>
       </div>
 
-      {visibleDrivers.map(({ driver, deliveries: driverDeliveries }: any) => {
-        const currentPlan = routePlans[driver.id] ?? driverDeliveries;
-        const hasPlan = Boolean(routePlans[driver.id]);
+      <Accordion type="multiple" className="space-y-4">
+        {visibleDrivers.map(({ driver, deliveries: driverDeliveries }: any) => {
+          const currentPlan = routePlans[driver.id] ?? driverDeliveries;
+          const hasPlan = Boolean(routePlans[driver.id]);
 
-        return (
-          <Card key={driver.id}>
-            <CardHeader>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <CardTitle>{driver.name}</CardTitle>
-                  <CardDescription>{driverDeliveries.length} entregas em aberto para hoje</CardDescription>
+          return (
+            <AccordionItem key={driver.id} value={driver.id} className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+              <AccordionTrigger className="px-6 py-5 hover:no-underline">
+                <div className="flex w-full flex-wrap items-center justify-between gap-4 text-left">
+                  <div>
+                    <CardTitle>{driver.name}</CardTitle>
+                    <CardDescription>{driverDeliveries.length} entregas em aberto para hoje</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span>{currentPlan.length} paradas</span>
+                    <span>{hasPlan ? "Rota revisada" : "Rota pendente"}</span>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6">
+                <div className="mb-4 flex flex-wrap justify-end gap-2">
                   <Button variant="outline" onClick={() => generateRoute(driver.id)} disabled={driverDeliveries.length === 0}>
                     <Navigation className="mr-2 h-4 w-4" />
                     Gerar rota automatica
@@ -402,102 +410,96 @@ export default function Routes() {
                     Limpar
                   </Button>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {currentPlan.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-                  Nenhuma entrega atribuida para este motorista hoje.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {currentPlan.map((delivery: any, index: number) => {
-                    const isDragging = draggingStop?.driverId === driver.id && draggingStop.index === index;
 
-                    return (
-                      <div
-                        key={delivery.id}
-                        className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${
-                          isDragging ? "border-primary bg-primary/5" : "bg-background"
-                        }`}
-                        draggable={hasPlan}
-                        onDragStart={() => setDraggingStop({ driverId: driver.id, index })}
-                        onDragEnd={() => setDraggingStop(null)}
-                        onDragOver={event => event.preventDefault()}
-                        onDrop={() => {
-                          if (!draggingStop || draggingStop.driverId !== driver.id) return;
-                          reorderStop(driver.id, draggingStop.index, index);
-                          setDraggingStop(null);
-                        }}
-                      >
-                        <div className="flex flex-col items-center gap-2 pt-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => moveStop(driver.id, index, -1)}
-                            disabled={index === 0 || !hasPlan}
-                          >
-                            <ArrowUp className="h-4 w-4" />
-                          </Button>
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                            {delivery.routeOrder ?? index + 1}
+                {currentPlan.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+                    Nenhuma entrega atribuida para este motorista hoje.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {currentPlan.map((delivery: any, index: number) => {
+                      const isDragging = draggingStop?.driverId === driver.id && draggingStop.index === index;
+
+                      return (
+                        <div
+                          key={delivery.id}
+                          className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${
+                            isDragging ? "border-primary bg-primary/5" : "bg-background"
+                          }`}
+                          draggable={hasPlan}
+                          onDragStart={() => setDraggingStop({ driverId: driver.id, index })}
+                          onDragEnd={() => setDraggingStop(null)}
+                          onDragOver={event => event.preventDefault()}
+                          onDrop={() => {
+                            if (!draggingStop || draggingStop.driverId !== driver.id) return;
+                            reorderStop(driver.id, draggingStop.index, index);
+                            setDraggingStop(null);
+                          }}
+                        >
+                          <div className="flex flex-col items-center gap-2 pt-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveStop(driver.id, index, -1)}
+                              disabled={index === 0 || !hasPlan}
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </Button>
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                              {delivery.routeOrder ?? index + 1}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveStop(driver.id, index, 1)}
+                              disabled={index === currentPlan.length - 1 || !hasPlan}
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </Button>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => moveStop(driver.id, index, 1)}
-                            disabled={index === currentPlan.length - 1 || !hasPlan}
-                          >
-                            <ArrowDown className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="flex items-center gap-2 font-semibold">
-                                <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                {delivery.clientName}
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="flex items-center gap-2 font-semibold">
+                                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                  {delivery.clientName}
+                                </div>
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                  <MapPin className="h-4 w-4" />
+                                  {delivery.destinationAddress}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {delivery.destinationPostalCode || "Sem CEP"} {" - "} Ordem {delivery.routeOrder ?? index + 1}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                <MapPin className="h-4 w-4" />
-                                {delivery.destinationAddress}
-                              </div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {delivery.destinationPostalCode || "Sem CEP"} • Ordem{" "}
-                                {delivery.routeOrder ?? index + 1}
+                              <div className="text-right text-xs text-muted-foreground">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="mb-2"
+                                  onClick={() => openGpsRoute(delivery.destinationAddress)}
+                                >
+                                  Abrir GPS
+                                </Button>
+                                <div>{formatDateTime(delivery.scheduledAt)}</div>
+                                <div>
+                                  {delivery.distanceFromPreviousKm != null
+                                    ? `${delivery.distanceFromPreviousKm} km da parada anterior`
+                                    : "Distancia em revisao"}
+                                </div>
                               </div>
                             </div>
-                            <div className="text-right text-xs text-muted-foreground">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="mb-2"
-                                onClick={() => openGpsRoute(delivery.destinationAddress)}
-                              >
-                                Abrir GPS
-                              </Button>
-                              <div>
-                                {delivery.scheduledAt
-                                  ? new Date(delivery.scheduledAt).toLocaleString("pt-BR")
-                                  : "Sem agendamento"}
-                              </div>
-                              <div>
-                                {delivery.distanceFromPreviousKm != null
-                                  ? `${delivery.distanceFromPreviousKm} km da parada anterior`
-                                  : "Distancia em revisao"}
-                              </div>
-                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      })}
+                      );
+                    })}
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
+      </Accordion>
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/components/ConfirmProvider";
+import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import { formatCep, formatPhone } from "@/lib/format";
 import { openWhatsApp, openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
@@ -42,12 +44,6 @@ const STATUS_COLORS: Record<string, string> = {
   cancelado: "bg-red-100 text-red-800",
 };
 
-function formatDateTime(value: string | Date | null | undefined) {
-  if (!value) return "-";
-  const date = value instanceof Date ? value : new Date(value);
-  return date.toLocaleString("pt-BR");
-}
-
 type DeliveryForm = {
   clientName: string;
   clientPhone: string;
@@ -80,6 +76,7 @@ const emptyForm: DeliveryForm = {
 };
 
 export default function Deliveries() {
+  const { confirm } = useConfirm();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -225,7 +222,7 @@ export default function Deliveries() {
       destinationAddress: delivery.destinationAddress ?? "",
       driverId: delivery.driverId ? String(delivery.driverId) : "",
       notes: delivery.notes ?? "",
-      scheduledAt: delivery.scheduledAt ? new Date(delivery.scheduledAt).toISOString().slice(0, 16) : "",
+      scheduledAt: toDateTimeLocalValue(delivery.scheduledAt),
     });
     setOpen(true);
   };
@@ -319,7 +316,13 @@ export default function Deliveries() {
   };
 
   const deleteDelivery = async (deliveryId: string) => {
-    if (!confirm("Deseja excluir esta entrega?")) return;
+    const approved = await confirm({
+      title: "Excluir entrega?",
+      description: "Esta ação remove a entrega e todo o histórico associado.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!approved) return;
 
     try {
       await deleteMutation.mutateAsync(deliveryId);
@@ -332,7 +335,13 @@ export default function Deliveries() {
 
   const bulkDelete = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Excluir ${selectedIds.length} entregas selecionadas?`)) return;
+    const approved = await confirm({
+      title: "Excluir entregas selecionadas?",
+      description: `Você está prestes a excluir ${selectedIds.length} entregas.`,
+      confirmLabel: "Excluir em lote",
+      destructive: true,
+    });
+    if (!approved) return;
 
     try {
       await bulkDeleteMutation.mutateAsync(selectedIds);
@@ -350,7 +359,7 @@ export default function Deliveries() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     setRescheduleForm({
       driverId: "",
-      scheduledAt: tomorrow.toISOString().slice(0, 16),
+      scheduledAt: toDateTimeLocalValue(tomorrow),
     });
     setRescheduleOpen(true);
   };

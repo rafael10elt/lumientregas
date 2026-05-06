@@ -22,6 +22,7 @@ import { Loader2, ShieldAlert } from "lucide-react";
 import { Route, Switch } from "wouter";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
+import { ConfirmProvider } from "./components/ConfirmProvider";
 
 function TenantBlockedScreen({
   tenantName,
@@ -167,8 +168,10 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <Toaster />
-          <Router />
+          <ConfirmProvider>
+            <Toaster />
+            <Router />
+          </ConfirmProvider>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

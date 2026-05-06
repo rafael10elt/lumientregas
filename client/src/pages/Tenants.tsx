@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { formatPhone, formatSlug } from "@/lib/format";
 import { openWhatsApp } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
@@ -35,6 +36,7 @@ const emptyForm: TenantForm = {
 };
 
 export default function Tenants() {
+  const { confirm } = useConfirm();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<TenantForm>(emptyForm);
@@ -127,9 +129,13 @@ export default function Tenants() {
   };
 
   const removeTenant = async (id: string) => {
-    if (!confirm("Deseja excluir este tenant?")) {
-      return;
-    }
+    const approved = await confirm({
+      title: "Excluir tenant?",
+      description: "O tenant será removido permanentemente do sistema.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!approved) return;
 
     try {
       await deleteMutation.mutateAsync({ id });

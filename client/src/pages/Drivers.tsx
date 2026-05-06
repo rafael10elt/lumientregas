@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/components/ConfirmProvider";
+import { formatDateTime } from "@/lib/datetime";
 import { formatPhone, formatPlate } from "@/lib/format";
 import { openWhatsApp } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
@@ -44,6 +46,7 @@ const STATUS_LABELS: Record<DriverForm["status"], string> = {
 };
 
 export default function Drivers() {
+  const { confirm } = useConfirm();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<DriverForm>(emptyForm);
@@ -245,7 +248,13 @@ export default function Drivers() {
   };
 
   const removeVehicle = async (vehicleId: string) => {
-    if (!confirm("Deseja excluir este veículo?")) return;
+    const approved = await confirm({
+      title: "Excluir veículo?",
+      description: "O veículo será removido do cadastro e do histórico de vínculo.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!approved) return;
 
     try {
       await deleteVehicleMutation.mutateAsync(vehicleId);
@@ -257,7 +266,13 @@ export default function Drivers() {
   };
 
   const removeDriver = async (id: string) => {
-    if (!confirm("Deseja excluir este motorista?")) return;
+    const approved = await confirm({
+      title: "Excluir motorista?",
+      description: "O perfil do motorista e seus vínculos serão removidos.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!approved) return;
 
     try {
       await deleteMutation.mutateAsync(id);
@@ -545,10 +560,10 @@ export default function Drivers() {
                       Veículo {allVehicles.find((vehicle: any) => vehicle.id === assignment.vehicleId)?.plate || assignment.vehicleId}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Início: {assignment.assignedAt ? new Date(assignment.assignedAt).toLocaleString("pt-BR") : "-"}
+                      Início: {formatDateTime(assignment.assignedAt)}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Fim: {assignment.unassignedAt ? new Date(assignment.unassignedAt).toLocaleString("pt-BR") : "Ativo"}
+                      Fim: {assignment.unassignedAt ? formatDateTime(assignment.unassignedAt) : "Ativo"}
                     </div>
                   </div>
                 ))

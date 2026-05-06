@@ -342,14 +342,46 @@ async function ensureDriverProfileForUser(user: User, accessToken?: string | nul
   }
 
   const db = clientFor(accessToken);
-  const { data: existing, error: existingError } = await db
+  const { data: existingByUserId, error: existingByUserIdError } = await db
     .from("drivers")
     .select("*")
     .eq("userId", user.id)
     .maybeSingle();
 
-  if (existingError) {
-    throw existingError;
+  if (existingByUserIdError) {
+    throw existingByUserIdError;
+  }
+
+  let existing = existingByUserId;
+
+  if (!existing && user.email) {
+    const { data: existingByEmail, error: existingByEmailError } = await db
+      .from("drivers")
+      .select("*")
+      .eq("tenantId", user.tenantId)
+      .ilike("email", user.email.trim())
+      .maybeSingle();
+
+    if (existingByEmailError) {
+      throw existingByEmailError;
+    }
+
+    existing = existingByEmail;
+  }
+
+  if (!existing && user.name) {
+    const { data: existingByName, error: existingByNameError } = await db
+      .from("drivers")
+      .select("*")
+      .eq("tenantId", user.tenantId)
+      .ilike("name", user.name.trim())
+      .maybeSingle();
+
+    if (existingByNameError) {
+      throw existingByNameError;
+    }
+
+    existing = existingByName;
   }
 
   const payload = removeUndefined({

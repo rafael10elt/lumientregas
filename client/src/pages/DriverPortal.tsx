@@ -8,6 +8,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { captureCurrentLocation } from "@/lib/geolocation";
+import { formatDateTime } from "@/lib/datetime";
 import { openGpsRoute, openWhatsApp } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import {
@@ -45,12 +46,6 @@ function isToday(value: string | Date | null | undefined) {
   const date = value instanceof Date ? value : new Date(value);
   const today = new Date();
   return date.toDateString() === today.toDateString();
-}
-
-function formatDateTime(value: string | Date | null | undefined) {
-  if (!value) return "-";
-  const date = value instanceof Date ? value : new Date(value);
-  return date.toLocaleString("pt-BR");
 }
 
 function DriverDeliveryCard({
@@ -211,13 +206,33 @@ function DriverDeliveryCard({
 
 export default function DriverPortal() {
   const { user, loading } = useAuth();
-  const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const { data: drivers = [] } = trpc.drivers.list.useQuery(undefined, {
+    enabled: Boolean(user),
+  });
+  const normalizedEmail = user?.email?.trim().toLowerCase() ?? null;
+  const normalizedName = user?.name?.trim().toLowerCase() ?? null;
+  const userIdentifiers = useMemo(
+    () =>
+      new Set(
+        [user?.id, user?.authUserId, user?.openId]
+          .filter((value): value is string => Boolean(value))
+          .map(value => String(value))
+      ),
+    [user?.authUserId, user?.id, user?.openId]
+  );
   const driver = useMemo(
     () =>
-      drivers.find((entry: any) => entry.userId === user?.id) ??
-      drivers.find((entry: any) => entry.email && entry.email === user?.email) ??
+      drivers.find((entry: any) => {
+        const entryEmail = entry.email?.trim().toLowerCase();
+        const entryName = entry.name?.trim().toLowerCase();
+        return (
+          userIdentifiers.has(String(entry.userId ?? "")) ||
+          (normalizedEmail && entryEmail === normalizedEmail) ||
+          (normalizedName && entryName === normalizedName)
+        );
+      }) ??
       null,
-    [drivers, user?.email, user?.id]
+    [drivers, normalizedEmail, normalizedName, userIdentifiers]
   );
 
   const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(

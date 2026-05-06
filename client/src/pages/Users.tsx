@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,7 @@ const STATUS_LABELS: Record<UserStatus, string> = {
 };
 
 export default function Users() {
+  const { confirm } = useConfirm();
   const { user, tenant } = useAuth();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -141,9 +143,13 @@ export default function Users() {
   };
 
   const removeUser = async (id: string) => {
-    if (!confirm("Deseja remover este usuário?")) {
-      return;
-    }
+    const approved = await confirm({
+      title: "Remover usuário?",
+      description: "Esta ação exclui a conta do usuário e seu acesso ao sistema.",
+      confirmLabel: "Remover",
+      destructive: true,
+    });
+    if (!approved) return;
 
     try {
       await deleteMutation.mutateAsync({ id });

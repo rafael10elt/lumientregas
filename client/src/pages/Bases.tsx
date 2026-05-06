@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { formatCep } from "@/lib/format";
 import { lookupCep } from "@/lib/cep";
 import { trpc } from "@/lib/trpc";
@@ -46,6 +47,7 @@ function fullAddress(base: any) {
 }
 
 export default function Bases() {
+  const { confirm } = useConfirm();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loadingCep, setLoadingCep] = useState(false);
@@ -148,7 +150,13 @@ export default function Bases() {
   };
 
   const removeBase = async (id: string) => {
-    if (!confirm("Deseja excluir esta base?")) return;
+    const approved = await confirm({
+      title: "Excluir base?",
+      description: "A base será removida do cadastro e deixará de ser usada nas rotas.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!approved) return;
 
     try {
       await deleteMutation.mutateAsync(id);

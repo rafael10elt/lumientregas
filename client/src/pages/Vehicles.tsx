@@ -4,6 +4,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useConfirm } from "@/components/ConfirmProvider";
+import { formatDateTime } from "@/lib/datetime";
 import { formatPlate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { Pencil, Plus, Trash2, Truck, Users } from "lucide-react";
@@ -26,13 +28,8 @@ const emptyForm: VehicleForm = {
   isPrimary: false,
 };
 
-function formatDateTime(value?: string | Date | null) {
-  if (!value) return "-";
-  const date = value instanceof Date ? value : new Date(value);
-  return date.toLocaleString("pt-BR");
-}
-
 export default function Vehicles() {
+  const { confirm } = useConfirm();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
@@ -167,7 +164,13 @@ export default function Vehicles() {
   };
 
   const removeVehicle = async (vehicleId: string) => {
-    if (!confirm("Deseja excluir este veículo?")) return;
+    const approved = await confirm({
+      title: "Excluir veículo?",
+      description: "O veículo será removido do cadastro e do histórico de vínculo.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!approved) return;
 
     try {
       await deleteMutation.mutateAsync(vehicleId);
