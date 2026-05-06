@@ -2,12 +2,14 @@ import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDateTime } from "@/lib/datetime";
 import { lookupCep } from "@/lib/cep";
-import { formatCep } from "@/lib/format";
+import { formatCep, formatPhone } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { ArrowDown, ArrowUp, Edit2, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
@@ -21,6 +23,34 @@ type RoutePlanItem = any & {
 
 type RoutePlans = Record<string, RoutePlanItem[]>;
 
+type RouteEditForm = {
+  clientName: string;
+  clientPhone: string;
+  baseId: string;
+  originPostalCode: string;
+  originAddress: string;
+  destinationPostalCode: string;
+  destinationAddress: string;
+  driverId: string;
+  notes: string;
+  scheduledAt: string;
+  status: "pendente" | "em_rota" | "entregue" | "cancelado";
+};
+
+const emptyEditForm: RouteEditForm = {
+  clientName: "",
+  clientPhone: "",
+  baseId: "",
+  originPostalCode: "",
+  originAddress: "",
+  destinationPostalCode: "",
+  destinationAddress: "",
+  driverId: "",
+  notes: "",
+  scheduledAt: "",
+  status: "pendente",
+};
+
 const STATUS_PRIORITY: Record<string, number> = {
   em_rota: 0,
   pendente: 1,
@@ -33,6 +63,13 @@ const STATUS_BADGE_STYLES: Record<string, string> = {
   em_rota: "border-blue-200 bg-blue-50 text-blue-800",
   entregue: "border-emerald-200 bg-emerald-50 text-emerald-800",
   cancelado: "border-rose-200 bg-rose-50 text-rose-800",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  pendente: "Pendente",
+  em_rota: "Em rota",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
 };
 
 function compareDeliveries(a: any, b: any) {
@@ -60,6 +97,11 @@ function buildRoutePreview(plan: RoutePlanItem[] | undefined, deliveries: RouteP
   return [...plan, ...remainder];
 }
 
+function formatDistanceKm(value: number | null | undefined) {
+  if (value == null) return "Distancia em revisao";
+  return `${Number(value).toFixed(2)} km da parada anterior`;
+}
+
 export default function Routes() {
   const [selectedBaseId, setSelectedBaseId] = useState<string>("auto");
   const [basePostalCode, setBasePostalCode] = useState("");
@@ -69,6 +111,9 @@ export default function Routes() {
   const [activeDriverIds, setActiveDriverIds] = useState<string[]>([]);
   const [loadingBase, setLoadingBase] = useState(false);
   const [draggingStop, setDraggingStop] = useState<{ driverId: string; index: number } | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<RouteEditForm>(emptyEditForm);
 
   const todayStart = useMemo(() => {
     const date = new Date();
@@ -91,6 +136,7 @@ export default function Routes() {
   const { data: bases = [] } = trpc.operationalBases.list.useQuery();
   const optimizeMutation = trpc.routes.optimize.useMutation();
   const reorderMutation = trpc.deliveries.reorder.useMutation();
+  const updateMutation = trpc.deliveries.update.useMutation();
 
   const selectedBase = useMemo(
     () =>
@@ -282,7 +328,63 @@ export default function Routes() {
   };
 
   const openDeliveryEditor = (deliveryId: string) => {
-    window.location.href = `/deliveries?edit=${encodeURIComponent(deliveryId)}`;
+    const delivery =
+      deliveries.find((item: any) => String(item.id) === String(deliveryId)) ??
+      routePlans[selectedDriverId]?.find((item: any) => String(item.id) === String(deliveryId)) ??
+      visibleDrivers.flatMap(entry => entry.previewDeliveries).find((item: any) => String(item.id) === String(deliveryId));
+
+    if (!delivery) {
+      toast.error("Entrega não encontrada");
+      return;
+    }
+
+    const resolvedDriverId = delivery.driverId ? String(delivery.driverId) : "";
+    setEditingDeliveryId(String(delivery.id));
+    setEditForm({
+      clientName: delivery.clientName ?? "",
+      clientPhone: delivery.clientPhone ?? "",
+      baseId: delivery.baseId ?? "",
+      originPostalCode: delivery.originPostalCode ?? "",
+      originAddress: delivery.originAddress ?? "",
+      destinationPostalCode: delivery.destinationPostalCode ?? "",
+      destinationAddress: delivery.destinationAddress ?? "",
+      driverId: resolvedDriverId,
+      notes: delivery.notes ?? "",
+      scheduledAt: delivery.scheduledAt ? new Date(delivery.scheduledAt).toISOString().slice(0, 16) : "",
+      status: delivery.status ?? "pendente",
+    });
+    setEditOpen(true);
+  };
+
+  const saveEditedDelivery = async () => {
+    if (!editingDeliveryId) return;
+    if (!editForm.clientName || !editForm.clientPhone || !editForm.baseId || !editForm.originAddress || !editForm.destinationAddress) {
+      toast.error("Preencha os campos obrigatórios");
+      return;
+    }
+
+    try {
+      await updateMutation.mutateAsync({
+        id: editingDeliveryId,
+        clientName: editForm.clientName,
+        clientPhone: editForm.clientPhone || undefined,
+        baseId: editForm.baseId || undefined,
+        originPostalCode: editForm.originPostalCode || undefined,
+        originAddress: editForm.originAddress,
+        destinationPostalCode: editForm.destinationPostalCode || undefined,
+        destinationAddress: editForm.destinationAddress,
+        driverId: editForm.driverId || undefined,
+        scheduledAt: editForm.scheduledAt ? new Date(editForm.scheduledAt) : undefined,
+        notes: editForm.notes || undefined,
+        status: editForm.status,
+      });
+      toast.success("Entrega atualizada");
+      setEditOpen(false);
+      setEditingDeliveryId(null);
+      refetch();
+    } catch {
+      toast.error("Não foi possível atualizar a entrega");
+    }
   };
 
   return (
@@ -528,7 +630,7 @@ export default function Routes() {
                                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                                   <span>{delivery.clientName}</span>
                                   <Badge variant="outline" className={STATUS_BADGE_STYLES[delivery.status] ?? ""}>
-                                    {delivery.status}
+                                    {STATUS_LABELS[delivery.status] ?? delivery.status}
                                   </Badge>
                                 </div>
                                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -560,11 +662,7 @@ export default function Routes() {
                                   </Button>
                                 </div>
                                 <div>{formatDateTime(delivery.scheduledAt)}</div>
-                                <div>
-                                  {delivery.distanceFromPreviousKm != null
-                                    ? `${delivery.distanceFromPreviousKm} km da parada anterior`
-                                    : "Distancia em revisao"}
-                                </div>
+                                <div>{formatDistanceKm(delivery.distanceFromPreviousKm)}</div>
                               </div>
                             </div>
                           </div>
@@ -578,6 +676,171 @@ export default function Routes() {
           );
         })}
       </Accordion>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Entrega</DialogTitle>
+            <DialogDescription>
+              Ajuste os dados operacionais da entrega sem sair da tela de rotas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label>Cliente *</Label>
+              <Input
+                value={editForm.clientName}
+                onChange={e => setEditForm(prev => ({ ...prev, clientName: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Telefone do cliente *</Label>
+              <Input
+                value={editForm.clientPhone}
+                onChange={e =>
+                  setEditForm(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Base operacional *</Label>
+              <Select
+                value={editForm.baseId || "unassigned"}
+                onValueChange={value =>
+                  setEditForm(prev => ({
+                    ...prev,
+                    baseId: value === "unassigned" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a base" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Base principal automática</SelectItem>
+                  {bases.map((base: any) => (
+                    <SelectItem key={base.id} value={String(base.id)}>
+                      {base.name}
+                      {base.isPrimary ? " (principal)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>CEP de origem</Label>
+              <Input
+                value={editForm.originPostalCode}
+                onChange={e =>
+                  setEditForm(prev => ({ ...prev, originPostalCode: formatCep(e.target.value) }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>CEP de destino</Label>
+              <Input
+                value={editForm.destinationPostalCode}
+                onChange={e =>
+                  setEditForm(prev => ({ ...prev, destinationPostalCode: formatCep(e.target.value) }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Endereço de origem *</Label>
+              <Input
+                value={editForm.originAddress}
+                onChange={e => setEditForm(prev => ({ ...prev, originAddress: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Endereço de destino *</Label>
+              <Input
+                value={editForm.destinationAddress}
+                onChange={e =>
+                  setEditForm(prev => ({ ...prev, destinationAddress: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Motorista ativo</Label>
+              <Select
+                value={editForm.driverId || "unassigned"}
+                onValueChange={value =>
+                  setEditForm(prev => ({
+                    ...prev,
+                    driverId: value === "unassigned" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um motorista ativo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Sem motorista</SelectItem>
+                  {driverOptions.map((driver: any) => (
+                    <SelectItem key={driver.id} value={String(driver.id)}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Data/Hora Agendada</Label>
+              <Input
+                type="datetime-local"
+                value={editForm.scheduledAt}
+                onChange={e => setEditForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status da entrega</Label>
+              <Select
+                value={editForm.status}
+                onValueChange={value =>
+                  setEditForm(prev => ({
+                    ...prev,
+                    status: value as RouteEditForm["status"],
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["pendente", "em_rota", "entregue", "cancelado"] as const).map(status => (
+                    <SelectItem key={status} value={status}>
+                      {STATUS_LABELS[status]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label>Observações</Label>
+              <Textarea
+                value={editForm.notes}
+                onChange={e => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+              />
+            </div>
+
+            <Button onClick={saveEditedDelivery} className="md:col-span-2">
+              Salvar alterações
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
