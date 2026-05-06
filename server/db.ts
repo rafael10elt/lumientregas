@@ -341,7 +341,9 @@ async function ensureDriverProfileForUser(user: User, accessToken?: string | nul
     return null;
   }
 
-  const db = clientFor(accessToken);
+  // This is an internal sync path owned by the server.
+  // Using the admin client avoids RLS blocking a valid motorista profile refresh.
+  const db = createSupabaseAdminClient();
   const { data: existingByUserId, error: existingByUserIdError } = await db
     .from("drivers")
     .select("*")
