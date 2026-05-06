@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +10,7 @@ import { lookupCep } from "@/lib/cep";
 import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, Edit2, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -25,6 +26,13 @@ const STATUS_PRIORITY: Record<string, number> = {
   pendente: 1,
   entregue: 2,
   cancelado: 3,
+};
+
+const STATUS_BADGE_STYLES: Record<string, string> = {
+  pendente: "border-yellow-200 bg-yellow-50 text-yellow-800",
+  em_rota: "border-blue-200 bg-blue-50 text-blue-800",
+  entregue: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  cancelado: "border-rose-200 bg-rose-50 text-rose-800",
 };
 
 function compareDeliveries(a: any, b: any) {
@@ -273,6 +281,10 @@ export default function Routes() {
     });
   };
 
+  const openDeliveryEditor = (deliveryId: string) => {
+    window.location.href = `/deliveries?edit=${encodeURIComponent(deliveryId)}`;
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -512,9 +524,12 @@ export default function Routes() {
                           <div className="flex-1">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                <div className="flex items-center gap-2 font-semibold">
+                                <div className="flex flex-wrap items-center gap-2 font-semibold">
                                   <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                  {delivery.clientName}
+                                  <span>{delivery.clientName}</span>
+                                  <Badge variant="outline" className={STATUS_BADGE_STYLES[delivery.status] ?? ""}>
+                                    {delivery.status}
+                                  </Badge>
                                 </div>
                                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
                                   <MapPin className="h-4 w-4" />
@@ -525,14 +540,25 @@ export default function Routes() {
                                 </div>
                               </div>
                               <div className="text-right text-xs text-muted-foreground">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="mb-2"
-                                  onClick={() => openGpsRoute(delivery.destinationAddress)}
-                                >
-                                  Abrir GPS
-                                </Button>
+                                <div className="mb-2 flex justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="gap-2"
+                                    onClick={() => openDeliveryEditor(delivery.id)}
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                    Editar
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="mb-2"
+                                    onClick={() => openGpsRoute(delivery.destinationAddress)}
+                                  >
+                                    Abrir GPS
+                                  </Button>
+                                </div>
                                 <div>{formatDateTime(delivery.scheduledAt)}</div>
                                 <div>
                                   {delivery.distanceFromPreviousKm != null

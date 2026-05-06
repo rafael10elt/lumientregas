@@ -119,6 +119,10 @@ export default function Deliveries() {
   });
   const [loadingCep, setLoadingCep] = useState<"origin" | "destination" | null>(null);
   const [formData, setFormData] = useState<DeliveryForm>(emptyForm);
+  const [pendingEditId, setPendingEditId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("edit");
+  });
 
   const queryInput = useMemo(() => {
     const input: {
@@ -247,6 +251,17 @@ export default function Deliveries() {
     });
     setOpen(true);
   };
+
+  useEffect(() => {
+    if (!pendingEditId || deliveries.length === 0) return;
+
+    const delivery = deliveries.find((item: any) => String(item.id) === String(pendingEditId));
+    if (!delivery) return;
+
+    openEdit(delivery);
+    setPendingEditId(null);
+    window.history.replaceState({}, "", "/deliveries");
+  }, [deliveries, pendingEditId]);
 
   const clearForm = () => {
     setEditingId(null);
@@ -820,6 +835,32 @@ export default function Deliveries() {
                   onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                 />
               </div>
+
+              {editingId ? (
+                <div className="space-y-2">
+                  <Label>Status da entrega</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={value =>
+                      setFormData(prev => ({
+                        ...prev,
+                        status: value as DeliveryForm["status"],
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DELIVERY_STATUSES.filter(status => status.value !== "all").map(status => (
+                        <SelectItem key={status.value} value={status.value}>
+                          {status.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
 
               <Button onClick={submitDelivery} className="md:col-span-2">
                 {editingId ? "Salvar alterações" : "Criar Entrega"}
