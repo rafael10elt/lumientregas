@@ -20,6 +20,7 @@ import {
   getVehicleAssignments,
   getDrivers,
   getDriverById,
+  getDriverForCurrentUser,
   getUsers,
   deleteUserAccount,
   deleteTenant,
@@ -126,6 +127,7 @@ export const appRouter = router({
           originAddress: z.string().optional(),
           destinationPostalCode: z.string().optional(),
           destinationAddress: z.string().optional(),
+          scheduledAt: z.date().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -244,6 +246,11 @@ export const appRouter = router({
 
   drivers: router({
     list: tenantProtectedProcedure.query(async ({ ctx }) => getDrivers(ctx.accessToken)),
+
+    me: tenantProtectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) return null;
+      return getDriverForCurrentUser(ctx.user, ctx.accessToken);
+    }),
 
     getById: tenantProtectedProcedure
       .input(z.coerce.string())

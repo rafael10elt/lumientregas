@@ -1189,6 +1189,41 @@ export async function getDriverById(id: string, accessToken?: string | null) {
   return data ? mapDriver(data) : undefined;
 }
 
+export async function getDriverForCurrentUser(user: User, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  await ensureDriverProfileForUser(user, accessToken);
+
+  const checks: Array<
+    | { column: "userId"; value: string; mode: "eq" }
+    | { column: "email" | "name"; value: string; mode: "ilike" }
+  > = [];
+  if (user.id) checks.push({ column: "userId", value: user.id, mode: "eq" });
+  if (user.email) checks.push({ column: "email", value: user.email.trim(), mode: "ilike" });
+  if (user.name) checks.push({ column: "name", value: user.name.trim(), mode: "ilike" });
+
+  for (const check of checks) {
+    let query = db.from("drivers").select("*").eq("tenantId", user.tenantId);
+    query =
+      check.mode === "eq"
+        ? query.eq(check.column, check.value)
+        : query.ilike(check.column, check.value);
+
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    if (data) return mapDriver(data);
+  }
+
+  const { data, error } = await db
+    .from("drivers")
+    .select("*")
+    .eq("tenantId", user.tenantId)
+    .eq("userId", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapDriver(data) : null;
+}
+
 export async function createDriver(driver: InsertDriver, accessToken?: string | null) {
   const db = clientFor(accessToken);
   const { data, error } = await db

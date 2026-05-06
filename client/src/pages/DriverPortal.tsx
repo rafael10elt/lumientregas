@@ -24,7 +24,7 @@ import {
   Route,
   Truck,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 const DELIVERY_STATUSES = [
@@ -206,34 +206,9 @@ function DriverDeliveryCard({
 
 export default function DriverPortal() {
   const { user, loading } = useAuth();
-  const { data: drivers = [] } = trpc.drivers.list.useQuery(undefined, {
+  const { data: driver = null } = trpc.drivers.me.useQuery(undefined, {
     enabled: Boolean(user),
   });
-  const normalizedEmail = user?.email?.trim().toLowerCase() ?? null;
-  const normalizedName = user?.name?.trim().toLowerCase() ?? null;
-  const userIdentifiers = useMemo(
-    () =>
-      new Set(
-        [user?.id, user?.authUserId, user?.openId]
-          .filter((value): value is string => Boolean(value))
-          .map(value => String(value))
-      ),
-    [user?.authUserId, user?.id, user?.openId]
-  );
-  const driver = useMemo(
-    () =>
-      drivers.find((entry: any) => {
-        const entryEmail = entry.email?.trim().toLowerCase();
-        const entryName = entry.name?.trim().toLowerCase();
-        return (
-          userIdentifiers.has(String(entry.userId ?? "")) ||
-          (normalizedEmail && entryEmail === normalizedEmail) ||
-          (normalizedName && entryName === normalizedName)
-        );
-      }) ??
-      null,
-    [drivers, normalizedEmail, normalizedName, userIdentifiers]
-  );
 
   const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(
     driver ? { driverId: driver.id } : undefined,
