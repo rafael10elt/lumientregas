@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import { lookupCep } from "@/lib/cep";
 import { formatCep, formatPhone } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
@@ -350,7 +350,7 @@ export default function Routes() {
       destinationAddress: delivery.destinationAddress ?? "",
       driverId: resolvedDriverId,
       notes: delivery.notes ?? "",
-      scheduledAt: delivery.scheduledAt ? new Date(delivery.scheduledAt).toISOString().slice(0, 16) : "",
+      scheduledAt: delivery.scheduledAt ? toDateTimeLocalValue(delivery.scheduledAt) : "",
       status: delivery.status ?? "pendente",
     });
     setEditOpen(true);

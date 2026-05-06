@@ -119,6 +119,7 @@ export const appRouter = router({
         z.object({
           id: z.coerce.string(),
           status: z.enum(["pendente", "em_rota", "entregue", "cancelado"]).optional(),
+          clientName: z.string().optional(),
           driverId: z.coerce.string().optional(),
           notes: z.string().optional(),
           clientPhone: z.string().optional(),
