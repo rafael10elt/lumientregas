@@ -354,34 +354,23 @@ async function ensureDriverProfileForUser(user: User, accessToken?: string | nul
 
   let existing = existingByUserId;
 
-  if (!existing && user.email) {
-    const { data: existingByEmail, error: existingByEmailError } = await db
+  if (!existing && (user.email || user.name)) {
+    const { data: tenantDrivers, error: tenantDriversError } = await db
       .from("drivers")
       .select("*")
       .eq("tenantId", user.tenantId)
-      .ilike("email", user.email.trim())
-      .maybeSingle();
+      .order("createdAt", { ascending: true });
 
-    if (existingByEmailError) {
-      throw existingByEmailError;
+    if (tenantDriversError) {
+      throw tenantDriversError;
     }
 
-    existing = existingByEmail;
-  }
-
-  if (!existing && user.name) {
-    const { data: existingByName, error: existingByNameError } = await db
-      .from("drivers")
-      .select("*")
-      .eq("tenantId", user.tenantId)
-      .ilike("name", user.name.trim())
-      .maybeSingle();
-
-    if (existingByNameError) {
-      throw existingByNameError;
-    }
-
-    existing = existingByName;
+    const normalizedEmail = user.email?.trim().toLowerCase() ?? null;
+    const normalizedName = user.name?.trim().toLowerCase() ?? null;
+    existing =
+      (tenantDrivers ?? []).find(driver => driver.email?.trim().toLowerCase() === normalizedEmail) ??
+      (tenantDrivers ?? []).find(driver => driver.name?.trim().toLowerCase() === normalizedName) ??
+      null;
   }
 
   const payload = removeUndefined({
@@ -1190,38 +1179,26 @@ export async function getDriverById(id: string, accessToken?: string | null) {
 }
 
 export async function getDriverForCurrentUser(user: User, accessToken?: string | null) {
-  const db = clientFor(accessToken);
   await ensureDriverProfileForUser(user, accessToken);
-
-  const checks: Array<
-    | { column: "userId"; value: string; mode: "eq" }
-    | { column: "email" | "name"; value: string; mode: "ilike" }
-  > = [];
-  if (user.id) checks.push({ column: "userId", value: user.id, mode: "eq" });
-  if (user.email) checks.push({ column: "email", value: user.email.trim(), mode: "ilike" });
-  if (user.name) checks.push({ column: "name", value: user.name.trim(), mode: "ilike" });
-
-  for (const check of checks) {
-    let query = db.from("drivers").select("*").eq("tenantId", user.tenantId);
-    query =
-      check.mode === "eq"
-        ? query.eq(check.column, check.value)
-        : query.ilike(check.column, check.value);
-
-    const { data, error } = await query.maybeSingle();
-    if (error) throw error;
-    if (data) return mapDriver(data);
-  }
-
+  const db = clientFor(accessToken);
   const { data, error } = await db
     .from("drivers")
     .select("*")
     .eq("tenantId", user.tenantId)
-    .eq("userId", user.id)
-    .maybeSingle();
+    .order("createdAt", { ascending: true });
 
   if (error) throw error;
-  return data ? mapDriver(data) : null;
+
+  const normalizedEmail = user.email?.trim().toLowerCase() ?? null;
+  const normalizedName = user.name?.trim().toLowerCase() ?? null;
+
+  const found =
+    (data ?? []).find(driver => String(driver.userId ?? "") === String(user.id)) ??
+    (data ?? []).find(driver => driver.email?.trim().toLowerCase() === normalizedEmail) ??
+    (data ?? []).find(driver => driver.name?.trim().toLowerCase() === normalizedName) ??
+    null;
+
+  return found ? mapDriver(found) : null;
 }
 
 export async function createDriver(driver: InsertDriver, accessToken?: string | null) {
