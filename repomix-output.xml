@@ -16687,456 +16687,6 @@ export default function Users() {
 }
 </file>
 
-<file path="client/src/pages/DriverPortal.tsx">
-import { useAuth } from "@/_core/hooks/useAuth";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { captureCurrentLocation } from "@/lib/geolocation";
-import { formatDateTime } from "@/lib/datetime";
-import { openGpsRoute, openWhatsApp } from "@/lib/navigation";
-import { trpc } from "@/lib/trpc";
-import {
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Clock3,
-  Loader2,
-  MapPin,
-  MessageCircleMore,
-  Navigation,
-  Package2,
-  Route,
-  Truck,
-} from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-
-const DELIVERY_STATUSES = [
-  { value: "pendente", label: "Pendente" },
-  { value: "em_rota", label: "Em rota" },
-  { value: "entregue", label: "Entregue" },
-  { value: "cancelado", label: "Cancelado" },
-] as const;
-
-const STATUS_STYLES: Record<string, string> = {
-  pendente: "border-yellow-200 bg-yellow-50 text-yellow-800",
-  em_rota: "border-blue-200 bg-blue-50 text-blue-800",
-  entregue: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  cancelado: "border-rose-200 bg-rose-50 text-rose-800",
-};
-
-function isToday(value: string | Date | null | undefined) {
-  if (!value) return false;
-  const date = value instanceof Date ? value : new Date(value);
-  const today = new Date();
-  return date.toDateString() === today.toDateString();
-}
-
-function DriverDeliveryCard({
-  delivery,
-  onStatusChange,
-}: {
-  delivery: any;
-  onStatusChange: (deliveryId: string, status: string) => Promise<void>;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const { data: events = [] } = trpc.deliveryEvents.list.useQuery(
-    { deliveryId: delivery.id },
-    { enabled: expanded }
-  );
-
-  const latestEvent = events[0];
-
-  return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <div className="rounded-2xl border border-border/70 bg-background shadow-sm transition-shadow hover:shadow-md">
-        <div className="flex flex-col gap-4 p-4 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className={STATUS_STYLES[delivery.status] ?? ""}>
-                {DELIVERY_STATUSES.find(status => status.value === delivery.status)?.label ??
-                  delivery.status}
-              </Badge>
-              <Badge variant="secondary">Ordem {delivery.routeOrder ?? "auto"}</Badge>
-              <Badge variant="outline">{delivery.destinationPostalCode || "Sem CEP"}</Badge>
-            </div>
-
-            <div>
-              <div className="font-semibold text-foreground">{delivery.clientName}</div>
-              <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-                <MapPin className="h-4 w-4" />
-                {delivery.destinationAddress}
-              </div>
-            </div>
-
-            <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
-              <div className="rounded-lg bg-muted/40 p-3">
-                <div className="font-medium text-foreground">Agenda</div>
-                <div className="mt-1">{formatDateTime(delivery.scheduledAt)}</div>
-              </div>
-              <div className="rounded-lg bg-muted/40 p-3">
-                <div className="font-medium text-foreground">Ultima movimentacao</div>
-                <div className="mt-1">
-                  {latestEvent ? formatDateTime(latestEvent.recordedAt) : "Sem registro ainda"}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 md:min-w-[240px]">
-            <div className="grid grid-cols-2 gap-2">
-              {DELIVERY_STATUSES.map(status => (
-                <Button
-                  key={status.value}
-                  size="sm"
-                  variant={delivery.status === status.value ? "default" : "outline"}
-                  className="justify-start"
-                  onClick={() => onStatusChange(delivery.id, status.value)}
-                >
-                  {status.label}
-                </Button>
-              ))}
-            </div>
-            <Button
-              variant="outline"
-              className="justify-between"
-              onClick={() => setExpanded(prev => !prev)}
-            >
-              <span>Detalhes da entrega</span>
-              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="gap-2" onClick={() => openGpsRoute(delivery.destinationAddress)}>
-                <Navigation className="h-4 w-4" />
-                GPS
-              </Button>
-              <Button variant="outline" className="gap-2" onClick={() => onStatusChange(delivery.id, delivery.status)}>
-                <Route className="h-4 w-4" />
-                Registrar
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <CollapsibleContent>
-          <div className="border-t border-border/60 px-4 py-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Origem
-                </div>
-                <div className="mt-1 text-sm text-foreground">{delivery.originAddress}</div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  {delivery.originPostalCode || "Sem CEP"}
-                </div>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Observacoes
-                </div>
-                <div className="mt-1 text-sm text-foreground">
-                  {delivery.notes || "Sem observacoes"}
-                </div>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Evento atual
-                </div>
-                <div className="mt-1 text-sm text-foreground">
-                  {latestEvent ? `${latestEvent.fromStatus || "inicio"} -> ${latestEvent.toStatus}` : "Sem registro"}
-                </div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  {latestEvent?.metadata?.actorRole ? `Autor: ${String(latestEvent.metadata.actorRole)}` : "Motorista ou gestor"}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-                <Clock3 className="h-4 w-4 text-primary" />
-                Historico de status
-              </div>
-              <div className="space-y-2">
-                {events.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                    Nenhum evento registrado ainda.
-                  </div>
-                ) : (
-                  events.map((event: any) => (
-                    <div key={event.id} className="rounded-lg border border-border/60 bg-background p-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="font-medium text-foreground">
-                          {event.fromStatus || "inicio"} {" -> "} {event.toStatus}
-                        </div>
-                        <div className="text-xs text-muted-foreground">{formatDateTime(event.recordedAt)}</div>
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {event.latitude && event.longitude
-                          ? `GPS ${event.latitude}, ${event.longitude}`
-                          : "GPS nao capturado"}
-                        {event.accuracy ? ` • Precisao ${event.accuracy}m` : ""}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </CollapsibleContent>
-      </div>
-    </Collapsible>
-  );
-}
-
-export default function DriverPortal() {
-  const { user, loading } = useAuth();
-  const { data: driver = null } = trpc.drivers.me.useQuery(undefined, {
-    enabled: Boolean(user),
-  });
-
-  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(
-    driver ? { driverId: driver.id } : undefined,
-    { enabled: Boolean(driver) }
-  );
-  const { data: vehicles = [] } = trpc.driverVehicles.list.useQuery(
-    driver ? { driverId: driver.id } : undefined,
-    { enabled: Boolean(driver) }
-  );
-
-  const updateStatusMutation = trpc.deliveries.updateStatus.useMutation();
-
-  const todayDeliveries = deliveries.filter((delivery: any) => isToday(delivery.scheduledAt));
-  const historyDeliveries = deliveries.filter((delivery: any) => !isToday(delivery.scheduledAt));
-  const primaryVehicle = vehicles.find((vehicle: any) => vehicle.isPrimary) ?? vehicles[0] ?? null;
-
-  const updateStatus = async (deliveryId: string, status: string) => {
-    try {
-      const location = await captureCurrentLocation();
-      await updateStatusMutation.mutateAsync({
-        id: deliveryId,
-        status: status as any,
-        latitude: location?.latitude,
-        longitude: location?.longitude,
-        accuracy: location?.accuracy ?? undefined,
-        metadata: {
-          source: "driver_portal",
-          driverId: driver?.id ?? null,
-        },
-      });
-      toast.success("Status atualizado");
-      refetch();
-    } catch {
-      toast.error("Nao foi possivel atualizar o status");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!driver) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Painel do motorista</CardTitle>
-          <CardDescription>
-            Seu usuario ainda nao esta vinculado a um motorista cadastrado.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">O que fazer agora</p>
-            <p className="mt-2">
-              Peça ao gestor para vincular seu usuario ao cadastro de motorista. Assim voce vai
-              enxergar suas entregas, status e veiculos.
-            </p>
-            <p className="mt-2">
-              Login atual: <span className="font-medium text-foreground">{user?.email || "-"}</span>
-            </p>
-          </div>
-          <Button onClick={() => (window.location.href = "/")}>Voltar ao sistema</Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Painel do Motorista</h1>
-        <p className="mt-1 text-muted-foreground">
-          {driver.name} • acompanhe as entregas do dia e atualize os status em tempo real
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {driver.phone ? (
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => openWhatsApp(driver.phone, `Olá ${driver.name}, tudo bem?`)}
-            >
-              <MessageCircleMore className="h-4 w-4" />
-              WhatsApp do motorista
-            </Button>
-          ) : null}
-          <Button variant="outline" className="gap-2" onClick={() => openGpsRoute("Lumi Entregas")}>
-            <MapPin className="h-4 w-4" />
-            Abrir no GPS
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Package2 className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">Entregas hoje</p>
-                <p className="text-2xl font-semibold">{todayDeliveries.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Clock3 className="h-5 w-5 text-blue-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Historico</p>
-                <p className="text-2xl font-semibold">{historyDeliveries.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Concluidas</p>
-                <p className="text-2xl font-semibold">
-                  {deliveries.filter((delivery: any) => delivery.status === "entregue").length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Truck className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">Veiculos</p>
-                <p className="text-2xl font-semibold">{vehicles.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Veiculos vinculados</CardTitle>
-          <CardDescription>
-            {vehicles.length > 0
-              ? "Os veiculos cadastrados para o seu perfil aparecem abaixo."
-              : "Nenhum veiculo foi cadastrado para este motorista ainda."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-2">
-            {vehicles.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                Solicite ao gestor o cadastro do veiculo principal para facilitar a operacao.
-              </div>
-            ) : (
-              vehicles.map((vehicle: any) => (
-                <div key={vehicle.id} className="rounded-lg border border-border p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">{vehicle.model}</p>
-                      <p className="text-sm text-muted-foreground">{vehicle.plate}</p>
-                      <p className="text-xs text-muted-foreground">{vehicle.nickname || "-"}</p>
-                    </div>
-                    {vehicle.isPrimary ? (
-                      <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                        Principal
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-          {primaryVehicle ? (
-            <div className="mt-4 rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground">
-              Veiculo principal:{" "}
-              <span className="font-medium text-foreground">
-                {primaryVehicle.model} • {primaryVehicle.plate}
-              </span>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Entregas de hoje</CardTitle>
-          <CardDescription>Atualize a etapa assim que cada entrega avancar</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {todayDeliveries.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma entrega programada para hoje.</p>
-            ) : (
-              todayDeliveries.map((delivery: any) => (
-                <DriverDeliveryCard
-                  key={delivery.id}
-                  delivery={delivery}
-                  onStatusChange={updateStatus}
-                />
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Historico</CardTitle>
-          <CardDescription>Entregas anteriores do motorista</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {historyDeliveries.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum historico disponivel.</p>
-            ) : (
-              historyDeliveries.map((delivery: any) => (
-                <DriverDeliveryCard
-                  key={delivery.id}
-                  delivery={delivery}
-                  onStatusChange={updateStatus}
-                />
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-</file>
-
 <file path="client/src/pages/Drivers.tsx">
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17882,6 +17432,190 @@ export default function Drivers() {
 }
 </file>
 
+<file path="client/src/App.tsx">
+import { useAuth } from "./_core/hooks/useAuth";
+import ErrorBoundary from "./components/ErrorBoundary";
+import DashboardLayout from "./components/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import Dashboard from "./pages/Dashboard";
+import Deliveries from "./pages/Deliveries";
+import Bases from "./pages/Bases";
+import Vehicles from "./pages/Vehicles";
+import Users from "./pages/Users";
+import Routes from "./pages/Routes";
+import Analytics from "./pages/Analytics";
+import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
+import DriverPortal from "./pages/DriverPortal";
+import Tenants from "./pages/Tenants";
+import NotFound from "@/pages/NotFound";
+import { Loader2, ShieldAlert } from "lucide-react";
+import { Route, Switch } from "wouter";
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+import { ConfirmProvider } from "./components/ConfirmProvider";
+
+function TenantBlockedScreen({
+  tenantName,
+  reason,
+  onLogout,
+}: {
+  tenantName?: string | null;
+  reason?: string | null;
+  onLogout: () => void;
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-amber-50 via-background to-slate-50 p-4">
+      <Card className="w-full max-w-lg shadow-xl">
+        <CardHeader>
+          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+            <ShieldAlert className="h-6 w-6" />
+          </div>
+          <CardTitle>Acesso temporariamente bloqueado</CardTitle>
+          <CardDescription>
+            {tenantName
+              ? `O tenant ${tenantName} está sem acesso no momento.`
+              : "Seu tenant está sem acesso no momento."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {reason || "Entre em contato com o administrador do sistema para regularizar o pagamento ou o status do tenant."}
+          </p>
+          <Button onClick={onLogout} className="w-full">
+            Sair da conta
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Router() {
+  const { isAuthenticated, loading, user, accessBlocked, accessBlockedReason, tenant, logout } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!user) return;
+    const tenantPages = ["/", "/deliveries", "/bases", "/vehicles", "/routes", "/analytics"];
+    const saasPages = ["/tenants", "/users"];
+
+    if (user.role === "motorista") {
+      if (location === "/driver") return;
+      if (location === "/login" || location === "/trocar-senha") return;
+      setLocation("/driver");
+      return;
+    }
+
+    if (user.role === "superadmin") {
+      if (location === "/login" || location === "/trocar-senha") return;
+      if (location === "/" || tenantPages.includes(location)) {
+        setLocation("/tenants");
+        return;
+      }
+      if (saasPages.includes(location)) return;
+      if (location === "/driver") return;
+      setLocation("/tenants");
+      return;
+    }
+
+    if (location === "/drivers") {
+      setLocation("/vehicles");
+      return;
+    }
+
+    if (location === "/tenants") {
+      setLocation("/");
+    }
+  }, [location, setLocation, user]);
+
+  if (location === "/login") {
+    if (loading) {
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+
+    if (isAuthenticated) {
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+
+    return <Login />;
+  }
+
+  if (location === "/trocar-senha") {
+    return <ResetPassword />;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  if (accessBlocked && user?.role !== "superadmin") {
+    return (
+      <TenantBlockedScreen
+        tenantName={tenant?.name}
+        reason={accessBlockedReason}
+        onLogout={logout}
+      />
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/deliveries" component={Deliveries} />
+        <Route path="/bases" component={Bases} />
+        <Route path="/vehicles" component={Vehicles} />
+        <Route path="/drivers" component={Vehicles} />
+        <Route path="/users" component={Users} />
+        <Route path="/routes" component={Routes} />
+        <Route path="/driver" component={DriverPortal} />
+        <Route path="/analytics" component={Analytics} />
+        <Route path="/tenants" component={Tenants} />
+        <Route component={NotFound} />
+      </Switch>
+    </DashboardLayout>
+  );
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="light">
+        <TooltipProvider>
+          <ConfirmProvider>
+            <Toaster />
+            <Router />
+          </ConfirmProvider>
+        </TooltipProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
+  );
+}
+
+export default App;
+</file>
+
 <file path="client/src/components/DashboardLayout.tsx">
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -18093,16 +17827,6 @@ function DashboardLayoutContent({
           </SidebarContent>
 
           <SidebarFooter className="p-3">
-            <div className="mb-3 rounded-lg border border-border bg-muted/30 p-3">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Shield className="h-3.5 w-3.5" />
-                <span>{user?.role || "-"}</span>
-              </div>
-              <p className="mt-1 truncate text-sm font-medium">{user?.name || "-"}</p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {user?.role === "superadmin" ? "Acesso SaaS" : tenant?.name || "Sem tenant"}
-              </p>
-            </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:justify-center">
@@ -18112,6 +17836,9 @@ function DashboardLayoutContent({
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+                    <p className="truncate text-xs text-muted-foreground">
+                      {user?.role || "-"} {user?.role === "superadmin" ? "• Acesso SaaS" : tenant?.name ? `• ${tenant.name}` : ""}
+                    </p>
                     <p className="truncate text-sm font-medium leading-none">{user?.name || "-"}</p>
                     <p className="mt-1.5 truncate text-xs text-muted-foreground">
                       {user?.email || "-"}
@@ -18161,1660 +17888,505 @@ function DashboardLayoutContent({
 }
 </file>
 
-<file path="client/src/pages/Routes.tsx">
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+<file path="client/src/pages/DriverPortal.tsx">
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatDateTime } from "@/lib/datetime";
-import { lookupCep } from "@/lib/cep";
-import { formatCep } from "@/lib/format";
-import { openGpsRoute } from "@/lib/navigation";
-import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
-
-type RoutePlanItem = any & {
-  routeOrder?: number | null;
-  distanceFromPreviousKm?: number | null;
-};
-
-type RoutePlans = Record<string, RoutePlanItem[]>;
-
-export default function Routes() {
-  const [selectedBaseId, setSelectedBaseId] = useState<string>("auto");
-  const [basePostalCode, setBasePostalCode] = useState("");
-  const [baseAddress, setBaseAddress] = useState("Rua Principal, 1 - Centro");
-  const [selectedDriverId, setSelectedDriverId] = useState<string>("all");
-  const [routePlans, setRoutePlans] = useState<RoutePlans>({});
-  const [activeDriverIds, setActiveDriverIds] = useState<string[]>([]);
-  const [loadingBase, setLoadingBase] = useState(false);
-  const [draggingStop, setDraggingStop] = useState<{ driverId: string; index: number } | null>(null);
-
-  const todayStart = useMemo(() => {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    return date;
-  }, []);
-
-  const todayEnd = useMemo(() => {
-    const date = new Date();
-    date.setHours(23, 59, 59, 999);
-    return date;
-  }, []);
-
-  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery({
-    startDate: todayStart,
-    endDate: todayEnd,
-  });
-  const { data: drivers = [] } = trpc.drivers.list.useQuery();
-  const { data: users = [] } = trpc.users.list.useQuery();
-  const { data: bases = [] } = trpc.operationalBases.list.useQuery();
-  const optimizeMutation = trpc.routes.optimize.useMutation();
-  const reorderMutation = trpc.deliveries.reorder.useMutation();
-
-  const selectedBase = useMemo(
-    () =>
-      selectedBaseId === "auto"
-        ? bases.find((base: any) => base.isPrimary) ?? bases[0]
-        : bases.find((base: any) => String(base.id) === selectedBaseId) ?? null,
-    [bases, selectedBaseId]
-  );
-
-  const openDeliveries = useMemo(
-    () => deliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"),
-    [deliveries]
-  );
-
-  const activeMotoristUserIds = useMemo(
-    () =>
-      new Set(
-        users
-          .filter((user: any) => user.role === "motorista" && user.status === "active")
-          .map((user: any) => user.id)
-      ),
-    [users]
-  );
-
-  const activeDrivers = useMemo(
-    () => drivers.filter((driver: any) => driver.userId && activeMotoristUserIds.has(driver.userId)),
-    [activeMotoristUserIds, drivers]
-  );
-
-  const selectedDriverOption = useMemo(
-    () => drivers.find((driver: any) => String(driver.id) === String(selectedDriverId)) ?? null,
-    [drivers, selectedDriverId]
-  );
-
-  const driverOptions = useMemo(() => {
-    const map = new Map<string, any>();
-    for (const driver of activeDrivers) {
-      map.set(driver.id, driver);
-    }
-    if (selectedDriverOption && selectedDriverId !== "all") {
-      map.set(selectedDriverOption.id, selectedDriverOption);
-    }
-    return [...map.values()];
-  }, [activeDrivers, selectedDriverId, selectedDriverOption]);
-
-  const visibleDrivers = useMemo(() => {
-    const byDriver = new Map<string, RoutePlanItem[]>();
-    for (const delivery of openDeliveries) {
-      if (!delivery.driverId) continue;
-      const current = byDriver.get(delivery.driverId) ?? [];
-      current.push(delivery);
-      byDriver.set(delivery.driverId, current);
-    }
-
-    const result = driverOptions.filter((driver: any) => (selectedDriverId === "all" ? true : driver.id === selectedDriverId));
-
-    return result.map((driver: any) => ({
-      driver,
-      deliveries: byDriver.get(driver.id) ?? [],
-    }));
-  }, [driverOptions, openDeliveries, selectedDriverId]);
-
-  const fillBaseFromCep = async () => {
-    if (!basePostalCode) {
-      toast.error("Informe o CEP da base");
-      return;
-    }
-
-    setLoadingBase(true);
-    try {
-      const result = await lookupCep(basePostalCode);
-      setBasePostalCode(result.cep);
-      setBaseAddress(result.fullAddress);
-      toast.success("Base preenchida com sucesso");
-    } catch (error: any) {
-      toast.error(error?.message ?? "Nao foi possivel consultar o CEP");
-    } finally {
-      setLoadingBase(false);
-    }
-  };
-
-  const syncBaseFromSelection = (base: any) => {
-    if (!base) return;
-    setBasePostalCode(base.postalCode || "");
-    setBaseAddress([base.street, base.number, base.neighborhood, base.city, base.state].filter(Boolean).join(", "));
-  };
-
-  useEffect(() => {
-    if (selectedBase) {
-      syncBaseFromSelection(selectedBase);
-    }
-  }, [selectedBase]);
-
-  const generateRoute = async (driverId: string) => {
-    try {
-      const data = await optimizeMutation.mutateAsync({
-        driverId,
-        baseId: selectedBase?.id,
-        baseAddress: baseAddress || undefined,
-        scheduledAt: todayStart,
-      });
-
-      setRoutePlans(prev => ({
-        ...prev,
-        [driverId]: (data?.deliveries ?? []).map((delivery: any) => ({
-          ...delivery,
-          routeOrder: delivery.routeOrder,
-          distanceFromPreviousKm: delivery.distanceFromPreviousKm,
-        })),
-      }));
-
-      if (!activeDriverIds.includes(driverId)) {
-        setActiveDriverIds(prev => [...prev, driverId]);
-      }
-
-      toast.success("Rota gerada e pronta para revisao");
-    } catch (error: any) {
-      toast.error(error?.message ?? "Nao foi possivel gerar a rota");
-    }
-  };
-
-  const moveStop = (driverId: string, index: number, direction: -1 | 1) => {
-    setRoutePlans(prev => {
-      const plan = [...(prev[driverId] ?? [])];
-      const targetIndex = index + direction;
-      if (targetIndex < 0 || targetIndex >= plan.length) return prev;
-      [plan[index], plan[targetIndex]] = [plan[targetIndex], plan[index]];
-      return {
-        ...prev,
-        [driverId]: plan.map((item, idx) => ({ ...item, routeOrder: idx + 1 })),
-      };
-    });
-  };
-
-  const reorderStop = (driverId: string, fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return;
-
-    setRoutePlans(prev => {
-      const plan = [...(prev[driverId] ?? [])];
-      if (fromIndex < 0 || fromIndex >= plan.length || toIndex < 0 || toIndex >= plan.length) {
-        return prev;
-      }
-
-      const [moved] = plan.splice(fromIndex, 1);
-      plan.splice(toIndex, 0, moved);
-
-      return {
-        ...prev,
-        [driverId]: plan.map((item, idx) => ({ ...item, routeOrder: idx + 1 })),
-      };
-    });
-  };
-
-  const saveRoute = async (driverId: string) => {
-    const plan = routePlans[driverId] ?? [];
-    if (plan.length === 0) {
-      toast.error("Nao ha rota gerada para salvar");
-      return;
-    }
-
-    try {
-      await reorderMutation.mutateAsync({
-        driverId,
-        scheduledAt: todayStart,
-        order: plan.map((item, index) => ({
-          id: item.id,
-          routeOrder: index + 1,
-        })),
-      });
-
-      setActiveDriverIds(prev => (prev.includes(driverId) ? prev : [...prev, driverId]));
-      toast.success("Rota salva com sucesso");
-      refetch();
-    } catch (error: any) {
-      toast.error(error?.message ?? "Nao foi possivel salvar a rota");
-    }
-  };
-
-  const resetRoute = (driverId: string) => {
-    setRoutePlans(prev => {
-      const next = { ...prev };
-      delete next[driverId];
-      return next;
-    });
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Roteirizacao</h1>
-        <p className="mt-1 text-muted-foreground">
-          Revisao de rotas automaticas, ordenacao manual, arrastar e soltar e base por CEP.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Base operacional</CardTitle>
-          <CardDescription>Escolha a base principal do dia ou ajuste manualmente a origem da rota.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-[1fr,2fr,auto]">
-          <div className="space-y-2 md:col-span-3">
-            <Label>Base do dia</Label>
-            <Select
-              value={selectedBaseId}
-              onValueChange={value => {
-                setSelectedBaseId(value);
-                if (value === "auto") {
-                  const primary = bases.find((base: any) => base.isPrimary) ?? bases[0];
-                  if (primary) syncBaseFromSelection(primary);
-                  return;
-                }
-                const base = bases.find((entry: any) => String(entry.id) === value);
-                syncBaseFromSelection(base);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Escolha a base principal" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto">Base principal automatica</SelectItem>
-                {bases.map((base: any) => (
-                  <SelectItem key={base.id} value={String(base.id)}>
-                    {base.name}
-                    {base.isPrimary ? " (principal)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedBase ? (
-              <p className="text-xs text-muted-foreground">
-                {selectedBase.street}, {selectedBase.number || "-"} - {selectedBase.city}/{selectedBase.state}
-              </p>
-            ) : null}
-          </div>
-          <div className="space-y-2">
-            <Label>CEP da base</Label>
-            <Input
-              placeholder="00000-000"
-              value={basePostalCode}
-              onChange={e => setBasePostalCode(formatCep(e.target.value))}
-              inputMode="numeric"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Endereco base</Label>
-            <Input value={baseAddress} onChange={e => setBaseAddress(e.target.value)} />
-          </div>
-          <div className="flex items-end">
-            <Button variant="outline" onClick={fillBaseFromCep} disabled={loadingBase}>
-              <Search className="mr-2 h-4 w-4" />
-              Consultar CEP
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid gap-4 lg:grid-cols-4">
-            <div className="space-y-2 lg:col-span-2">
-              <Label>Motorista ativo</Label>
-              <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos os motoristas ativos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os motoristas ativos</SelectItem>
-                  {driverOptions.map((driver: any) => (
-                    <SelectItem key={driver.id} value={String(driver.id)}>
-                      {driver.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => {
-                  setRoutePlans({});
-                  setActiveDriverIds([]);
-                  setDraggingStop(null);
-                }}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Limpar revisoes
-              </Button>
-            </div>
-            <div className="flex items-end">
-              <Button variant="outline" className="w-full" onClick={() => refetch()}>
-                Atualizar base
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Entregas em aberto</p>
-            <p className="text-2xl font-semibold">{openDeliveries.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Motoristas ativos com rota</p>
-            <p className="text-2xl font-semibold">{visibleDrivers.filter(entry => entry.deliveries.length > 0).length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Rotas revisadas</p>
-            <p className="text-2xl font-semibold">{activeDriverIds.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Base</p>
-            <p className="text-sm font-medium truncate">{baseAddress}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Accordion type="multiple" className="space-y-4">
-        {visibleDrivers.map(({ driver, deliveries: driverDeliveries }: any) => {
-          const currentPlan = routePlans[driver.id] ?? driverDeliveries;
-          const hasPlan = Boolean(routePlans[driver.id]);
-
-          return (
-            <AccordionItem key={driver.id} value={driver.id} className="overflow-hidden rounded-2xl border bg-background shadow-sm">
-              <AccordionTrigger className="px-6 py-5 hover:no-underline">
-                <div className="flex w-full flex-wrap items-center justify-between gap-4 text-left">
-                  <div>
-                    <CardTitle>{driver.name}</CardTitle>
-                    <CardDescription>{driverDeliveries.length} entregas em aberto para hoje</CardDescription>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span>{currentPlan.length} paradas</span>
-                    <span>{hasPlan ? "Rota revisada" : "Rota pendente"}</span>
-                  </div>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-6 pb-6">
-                <div className="mb-4 flex flex-wrap justify-end gap-2">
-                  <Button variant="outline" onClick={() => generateRoute(driver.id)} disabled={driverDeliveries.length === 0}>
-                    <Navigation className="mr-2 h-4 w-4" />
-                    Gerar rota automatica
-                  </Button>
-                  <Button variant="default" onClick={() => saveRoute(driver.id)} disabled={!hasPlan}>
-                    <Save className="mr-2 h-4 w-4" />
-                    Salvar revisao
-                  </Button>
-                  <Button variant="ghost" onClick={() => resetRoute(driver.id)} disabled={!hasPlan}>
-                    Limpar
-                  </Button>
-                </div>
-
-                {currentPlan.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-                    Nenhuma entrega atribuida para este motorista hoje.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {currentPlan.map((delivery: any, index: number) => {
-                      const isDragging = draggingStop?.driverId === driver.id && draggingStop.index === index;
-
-                      return (
-                        <div
-                          key={delivery.id}
-                          className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${
-                            isDragging ? "border-primary bg-primary/5" : "bg-background"
-                          }`}
-                          draggable={hasPlan}
-                          onDragStart={() => setDraggingStop({ driverId: driver.id, index })}
-                          onDragEnd={() => setDraggingStop(null)}
-                          onDragOver={event => event.preventDefault()}
-                          onDrop={() => {
-                            if (!draggingStop || draggingStop.driverId !== driver.id) return;
-                            reorderStop(driver.id, draggingStop.index, index);
-                            setDraggingStop(null);
-                          }}
-                        >
-                          <div className="flex flex-col items-center gap-2 pt-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => moveStop(driver.id, index, -1)}
-                              disabled={index === 0 || !hasPlan}
-                            >
-                              <ArrowUp className="h-4 w-4" />
-                            </Button>
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                              {delivery.routeOrder ?? index + 1}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => moveStop(driver.id, index, 1)}
-                              disabled={index === currentPlan.length - 1 || !hasPlan}
-                            >
-                              <ArrowDown className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="flex items-center gap-2 font-semibold">
-                                  <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                  {delivery.clientName}
-                                </div>
-                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                  <MapPin className="h-4 w-4" />
-                                  {delivery.destinationAddress}
-                                </div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {delivery.destinationPostalCode || "Sem CEP"} {" - "} Ordem {delivery.routeOrder ?? index + 1}
-                                </div>
-                              </div>
-                              <div className="text-right text-xs text-muted-foreground">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="mb-2"
-                                  onClick={() => openGpsRoute(delivery.destinationAddress)}
-                                >
-                                  Abrir GPS
-                                </Button>
-                                <div>{formatDateTime(delivery.scheduledAt)}</div>
-                                <div>
-                                  {delivery.distanceFromPreviousKm != null
-                                    ? `${delivery.distanceFromPreviousKm} km da parada anterior`
-                                    : "Distancia em revisao"}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
-    </div>
-  );
-}
-</file>
-
-<file path="client/src/App.tsx">
-import { useAuth } from "./_core/hooks/useAuth";
-import ErrorBoundary from "./components/ErrorBoundary";
-import DashboardLayout from "./components/DashboardLayout";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import Dashboard from "./pages/Dashboard";
-import Deliveries from "./pages/Deliveries";
-import Bases from "./pages/Bases";
-import Vehicles from "./pages/Vehicles";
-import Users from "./pages/Users";
-import Routes from "./pages/Routes";
-import Analytics from "./pages/Analytics";
-import Login from "./pages/Login";
-import ResetPassword from "./pages/ResetPassword";
-import DriverPortal from "./pages/DriverPortal";
-import Tenants from "./pages/Tenants";
-import NotFound from "@/pages/NotFound";
-import { Loader2, ShieldAlert } from "lucide-react";
-import { Route, Switch } from "wouter";
-import { useEffect } from "react";
-import { useLocation } from "wouter";
-import { ConfirmProvider } from "./components/ConfirmProvider";
-
-function TenantBlockedScreen({
-  tenantName,
-  reason,
-  onLogout,
-}: {
-  tenantName?: string | null;
-  reason?: string | null;
-  onLogout: () => void;
-}) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-amber-50 via-background to-slate-50 p-4">
-      <Card className="w-full max-w-lg shadow-xl">
-        <CardHeader>
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-            <ShieldAlert className="h-6 w-6" />
-          </div>
-          <CardTitle>Acesso temporariamente bloqueado</CardTitle>
-          <CardDescription>
-            {tenantName
-              ? `O tenant ${tenantName} está sem acesso no momento.`
-              : "Seu tenant está sem acesso no momento."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            {reason || "Entre em contato com o administrador do sistema para regularizar o pagamento ou o status do tenant."}
-          </p>
-          <Button onClick={onLogout} className="w-full">
-            Sair da conta
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function Router() {
-  const { isAuthenticated, loading, user, accessBlocked, accessBlockedReason, tenant, logout } = useAuth();
-  const [location, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (!user) return;
-    const tenantPages = ["/", "/deliveries", "/bases", "/vehicles", "/routes", "/analytics"];
-    const saasPages = ["/tenants", "/users"];
-
-    if (user.role === "motorista") {
-      if (location === "/driver") return;
-      if (location === "/login" || location === "/trocar-senha") return;
-      setLocation("/driver");
-      return;
-    }
-
-    if (user.role === "superadmin") {
-      if (location === "/login" || location === "/trocar-senha") return;
-      if (location === "/" || tenantPages.includes(location)) {
-        setLocation("/tenants");
-        return;
-      }
-      if (saasPages.includes(location)) return;
-      if (location === "/driver") return;
-      setLocation("/tenants");
-      return;
-    }
-
-    if (location === "/drivers") {
-      setLocation("/vehicles");
-      return;
-    }
-
-    if (location === "/tenants") {
-      setLocation("/");
-    }
-  }, [location, setLocation, user]);
-
-  if (location === "/login") {
-    if (loading) {
-      return (
-        <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      );
-    }
-
-    if (isAuthenticated) {
-      return (
-        <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      );
-    }
-
-    return <Login />;
-  }
-
-  if (location === "/trocar-senha") {
-    return <ResetPassword />;
-  }
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Login />;
-  }
-
-  if (accessBlocked && user?.role !== "superadmin") {
-    return (
-      <TenantBlockedScreen
-        tenantName={tenant?.name}
-        reason={accessBlockedReason}
-        onLogout={logout}
-      />
-    );
-  }
-
-  return (
-    <DashboardLayout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/deliveries" component={Deliveries} />
-        <Route path="/bases" component={Bases} />
-        <Route path="/vehicles" component={Vehicles} />
-        <Route path="/drivers" component={Vehicles} />
-        <Route path="/users" component={Users} />
-        <Route path="/routes" component={Routes} />
-        <Route path="/driver" component={DriverPortal} />
-        <Route path="/analytics" component={Analytics} />
-        <Route path="/tenants" component={Tenants} />
-        <Route component={NotFound} />
-      </Switch>
-    </DashboardLayout>
-  );
-}
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <ConfirmProvider>
-            <Toaster />
-            <Router />
-          </ConfirmProvider>
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  );
-}
-
-export default App;
-</file>
-
-<file path="client/src/pages/Deliveries.tsx">
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { useConfirm } from "@/components/ConfirmProvider";
-import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
-import { formatCep, formatPhone } from "@/lib/format";
-import { openWhatsApp, openGpsRoute } from "@/lib/navigation";
-import { trpc } from "@/lib/trpc";
-import { lookupCep } from "@/lib/cep";
 import {
-  Calendar,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { captureCurrentLocation } from "@/lib/geolocation";
+import { formatDateTime } from "@/lib/datetime";
+import { openGpsRoute, openWhatsApp } from "@/lib/navigation";
+import { trpc } from "@/lib/trpc";
+import {
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock3,
-  MessageCircleMore,
+  Loader2,
   MapPin,
+  MessageCircleMore,
   Navigation,
-  Pencil,
-  Plus,
-  Search,
-  ShieldAlert,
-  Trash2,
+  Package2,
+  Truck,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/ConfirmProvider";
 
 const DELIVERY_STATUSES = [
-  { value: "all", label: "Todos" },
   { value: "pendente", label: "Pendente" },
   { value: "em_rota", label: "Em rota" },
   { value: "entregue", label: "Entregue" },
   { value: "cancelado", label: "Cancelado" },
 ] as const;
 
-const STATUS_COLORS: Record<string, string> = {
-  pendente: "bg-yellow-100 text-yellow-800",
-  em_rota: "bg-blue-100 text-blue-800",
-  entregue: "bg-green-100 text-green-800",
-  cancelado: "bg-red-100 text-red-800",
+const STATUS_STYLES: Record<string, string> = {
+  pendente: "border-yellow-200 bg-yellow-50 text-yellow-800",
+  em_rota: "border-blue-200 bg-blue-50 text-blue-800",
+  entregue: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  cancelado: "border-rose-200 bg-rose-50 text-rose-800",
 };
 
-type DeliveryForm = {
-  clientName: string;
-  clientPhone: string;
-  baseId: string;
-  originPostalCode: string;
-  originAddress: string;
-  destinationPostalCode: string;
-  destinationAddress: string;
-  driverId: string;
-  notes: string;
-  scheduledAt: string;
+function isToday(value: string | Date | null | undefined) {
+  if (!value) return false;
+  const date = value instanceof Date ? value : new Date(value);
+  const today = new Date();
+  return date.toDateString() === today.toDateString();
+}
+
+const STATUS_PRIORITY: Record<string, number> = {
+  em_rota: 0,
+  pendente: 1,
+  entregue: 2,
+  cancelado: 3,
 };
 
-type RescheduleForm = {
-  driverId: string;
-  scheduledAt: string;
-};
+function compareDeliveries(a: any, b: any) {
+  const statusDiff = (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99);
+  if (statusDiff !== 0) return statusDiff;
 
-const emptyForm: DeliveryForm = {
-  clientName: "",
-  clientPhone: "",
-  baseId: "",
-  originPostalCode: "",
-  originAddress: "",
-  destinationPostalCode: "",
-  destinationAddress: "",
-  driverId: "",
-  notes: "",
-  scheduledAt: "",
-};
+  const routeOrderA = a.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  const routeOrderB = b.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  if (routeOrderA !== routeOrderB) return routeOrderA - routeOrderB;
 
-export default function Deliveries() {
+  const scheduledA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  const scheduledB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  if (scheduledA !== scheduledB) return scheduledA - scheduledB;
+
+  return String(a.clientName ?? "").localeCompare(String(b.clientName ?? ""));
+}
+
+function getAllowedDriverStatuses(status: string) {
+  if (status === "pendente") return ["em_rota", "cancelado"];
+  if (status === "em_rota") return ["entregue", "cancelado"];
+  return [];
+}
+
+function DriverDeliveryCard({
+  delivery,
+  onStatusChange,
+}: {
+  delivery: any;
+  onStatusChange: (deliveryId: string, status: string) => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isLocked = delivery.status === "entregue" || delivery.status === "cancelado";
+  const { data: events = [] } = trpc.deliveryEvents.list.useQuery(
+    { deliveryId: delivery.id },
+    { enabled: expanded }
+  );
+
+  const latestEvent = events[0];
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <div
+        className={[
+          "rounded-2xl border border-border/70 bg-background shadow-sm transition-shadow hover:shadow-md",
+          isLocked ? "opacity-60 grayscale" : "",
+        ].join(" ")}
+      >
+        <div className="flex flex-col gap-4 p-4 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className={STATUS_STYLES[delivery.status] ?? ""}>
+                {DELIVERY_STATUSES.find(status => status.value === delivery.status)?.label ??
+                  delivery.status}
+              </Badge>
+              <Badge variant="secondary">Ordem {delivery.routeOrder ?? "auto"}</Badge>
+              <Badge variant="outline">{delivery.destinationPostalCode || "Sem CEP"}</Badge>
+            </div>
+
+            <div>
+              <div className="font-semibold text-foreground">{delivery.clientName}</div>
+              <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                {delivery.destinationAddress}
+              </div>
+            </div>
+
+            <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+              <div className="rounded-lg bg-muted/40 p-3">
+                <div className="font-medium text-foreground">Agenda</div>
+                <div className="mt-1">{formatDateTime(delivery.scheduledAt)}</div>
+              </div>
+              <div className="rounded-lg bg-muted/40 p-3">
+                <div className="font-medium text-foreground">Ultima movimentacao</div>
+                <div className="mt-1">
+                  {latestEvent ? formatDateTime(latestEvent.recordedAt) : "Sem registro ainda"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 md:min-w-[240px]">
+            <div className="grid grid-cols-2 gap-2">
+              {getAllowedDriverStatuses(delivery.status).map(statusValue => {
+                const status = DELIVERY_STATUSES.find(item => item.value === statusValue);
+                if (!status) return null;
+
+                return (
+                  <Button
+                    key={status.value}
+                    size="sm"
+                    variant="outline"
+                    className="justify-start"
+                    onClick={() => onStatusChange(delivery.id, status.value)}
+                  >
+                    {status.label}
+                  </Button>
+                );
+              })}
+            </div>
+            <Button
+              variant="outline"
+              className="justify-between"
+              onClick={() => setExpanded(prev => !prev)}
+            >
+              <span>Detalhes da entrega</span>
+              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" className="gap-2" onClick={() => openGpsRoute(delivery.destinationAddress)}>
+                <Navigation className="h-4 w-4" />
+                GPS
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <CollapsibleContent>
+          <div className="border-t border-border/60 px-4 py-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Origem
+                </div>
+                <div className="mt-1 text-sm text-foreground">{delivery.originAddress}</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {delivery.originPostalCode || "Sem CEP"}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Observacoes
+                </div>
+                <div className="mt-1 text-sm text-foreground">
+                  {delivery.notes || "Sem observacoes"}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Evento atual
+                </div>
+                <div className="mt-1 text-sm text-foreground">
+                  {latestEvent ? `${latestEvent.fromStatus || "inicio"} -> ${latestEvent.toStatus}` : "Sem registro"}
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {latestEvent?.metadata?.actorRole ? `Autor: ${String(latestEvent.metadata.actorRole)}` : "Motorista ou gestor"}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                <Clock3 className="h-4 w-4 text-primary" />
+                Historico de status
+              </div>
+              <div className="space-y-2">
+                {events.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    Nenhum evento registrado ainda.
+                  </div>
+                ) : (
+                  events.map((event: any) => (
+                    <div key={event.id} className="rounded-lg border border-border/60 bg-background p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-medium text-foreground">
+                          {event.fromStatus || "inicio"} {" -> "} {event.toStatus}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{formatDateTime(event.recordedAt)}</div>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {event.latitude && event.longitude
+                          ? `GPS ${event.latitude}, ${event.longitude}`
+                          : "GPS nao capturado"}
+                        {event.accuracy ? ` • Precisao ${event.accuracy}m` : ""}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
+export default function DriverPortal() {
+  const { user, loading } = useAuth();
   const { confirm } = useConfirm();
-  const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [driverFilter, setDriverFilter] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [expandedIds, setExpandedIds] = useState<string[]>([]);
-  const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [rescheduleTarget, setRescheduleTarget] = useState<string[] | null>(null);
-  const [rescheduleForm, setRescheduleForm] = useState<RescheduleForm>({
-    driverId: "",
-    scheduledAt: "",
+  const { data: driver = null } = trpc.drivers.me.useQuery(undefined, {
+    enabled: Boolean(user),
   });
-  const [loadingCep, setLoadingCep] = useState<"origin" | "destination" | null>(null);
-  const [formData, setFormData] = useState<DeliveryForm>(emptyForm);
 
-  const queryInput = useMemo(() => {
-    const input: {
-      status?: string;
-      driverId?: string;
-      startDate?: Date;
-      endDate?: Date;
-    } = {};
+  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(
+    driver ? { driverId: driver.id } : undefined,
+    { enabled: Boolean(driver) }
+  );
+  const { data: vehicles = [] } = trpc.driverVehicles.list.useQuery(
+    driver ? { driverId: driver.id } : undefined,
+    { enabled: Boolean(driver) }
+  );
 
-    if (statusFilter !== "all") input.status = statusFilter;
-    if (driverFilter !== "all") input.driverId = driverFilter;
-    if (startDate) input.startDate = new Date(`${startDate}T00:00:00`);
-    if (endDate) input.endDate = new Date(`${endDate}T23:59:59`);
-    return input;
-  }, [driverFilter, endDate, startDate, statusFilter]);
-
-  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(queryInput);
-  const { data: drivers = [] } = trpc.drivers.list.useQuery();
-  const { data: users = [] } = trpc.users.list.useQuery();
-  const { data: bases = [] } = trpc.operationalBases.list.useQuery();
-  const createMutation = trpc.deliveries.create.useMutation();
-  const updateMutation = trpc.deliveries.update.useMutation();
   const updateStatusMutation = trpc.deliveries.updateStatus.useMutation();
-  const deleteMutation = trpc.deliveries.delete.useMutation();
-  const bulkDeleteMutation = trpc.deliveries.bulkDelete.useMutation();
-  const bulkRescheduleMutation = trpc.deliveries.bulkReschedule.useMutation();
 
-  const visibleDeliveries = useMemo(() => {
-    const filtered = deliveries.filter((d: any) =>
-      [d.clientName, d.originAddress, d.destinationAddress, d.originPostalCode, d.destinationPostalCode]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
-    );
+  const todayDeliveries = deliveries
+    .filter((delivery: any) => isToday(delivery.scheduledAt))
+    .slice()
+    .sort(compareDeliveries);
+  const historyDeliveries = deliveries
+    .filter((delivery: any) => !isToday(delivery.scheduledAt))
+    .slice()
+    .sort(compareDeliveries);
+  const primaryVehicle = vehicles.find((vehicle: any) => vehicle.isPrimary) ?? vehicles[0] ?? null;
 
-    return [...filtered].sort((a: any, b: any) => {
-      const aKey = Number.isFinite(a.routeOrder) ? a.routeOrder : a.scheduledAt || "";
-      const bKey = Number.isFinite(b.routeOrder) ? b.routeOrder : b.scheduledAt || "";
-      return String(aKey).localeCompare(String(bKey));
-    });
-  }, [deliveries, searchTerm]);
-
-  const activeDriverIds = useMemo(
-    () =>
-      new Set(
-        users
-          .filter((user: any) => user.role === "motorista" && user.status === "active")
-          .map((user: any) => user.id)
-      ),
-    [users]
-  );
-
-  const activeDrivers = useMemo(
-    () => drivers.filter((driver: any) => driver.userId && activeDriverIds.has(driver.userId)),
-    [activeDriverIds, drivers]
-  );
-
-  const selectedFormDriver = useMemo(
-    () => drivers.find((driver: any) => String(driver.id) === String(formData.driverId)) ?? null,
-    [drivers, formData.driverId]
-  );
-
-  const selectedRescheduleDriver = useMemo(
-    () => drivers.find((driver: any) => String(driver.id) === String(rescheduleForm.driverId)) ?? null,
-    [drivers, rescheduleForm.driverId]
-  );
-
-  const selectedFilterDriver = useMemo(
-    () => drivers.find((driver: any) => String(driver.id) === String(driverFilter)) ?? null,
-    [driverFilter, drivers]
-  );
-
-  const deliveryDriverOptions = useMemo(() => {
-    const map = new Map<string, any>();
-    for (const driver of activeDrivers) {
-      map.set(driver.id, driver);
-    }
-    if (selectedFormDriver) {
-      map.set(selectedFormDriver.id, selectedFormDriver);
-    }
-    return [...map.values()];
-  }, [activeDrivers, selectedFormDriver]);
-
-  const rescheduleDriverOptions = useMemo(() => {
-    const map = new Map<string, any>();
-    for (const driver of activeDrivers) {
-      map.set(driver.id, driver);
-    }
-    if (selectedRescheduleDriver) {
-      map.set(selectedRescheduleDriver.id, selectedRescheduleDriver);
-    }
-    return [...map.values()];
-  }, [activeDrivers, selectedRescheduleDriver]);
-
-  const driverFilterOptions = useMemo(() => {
-    const map = new Map<string, any>();
-    for (const driver of activeDrivers) {
-      map.set(driver.id, driver);
-    }
-    if (selectedFilterDriver) {
-      map.set(selectedFilterDriver.id, selectedFilterDriver);
-    }
-    return [...map.values()];
-  }, [activeDrivers, selectedFilterDriver]);
-
-  const selectedDeliveries = visibleDeliveries.filter((delivery: any) => selectedIds.includes(delivery.id));
-  const openDeliveries = visibleDeliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado");
-  const deliveriesInProgress = visibleDeliveries.filter((delivery: any) => delivery.status === "em_rota");
-
-  const openCreate = () => {
-    setEditingId(null);
-    setFormData(emptyForm);
-    setOpen(true);
-  };
-
-  const openEdit = (delivery: any) => {
-    setEditingId(delivery.id);
-    setFormData({
-      clientName: delivery.clientName ?? "",
-      clientPhone: delivery.clientPhone ?? "",
-      baseId: delivery.baseId ?? "",
-      originPostalCode: delivery.originPostalCode ?? "",
-      originAddress: delivery.originAddress ?? "",
-      destinationPostalCode: delivery.destinationPostalCode ?? "",
-      destinationAddress: delivery.destinationAddress ?? "",
-      driverId: delivery.driverId ? String(delivery.driverId) : "",
-      notes: delivery.notes ?? "",
-      scheduledAt: toDateTimeLocalValue(delivery.scheduledAt),
-    });
-    setOpen(true);
-  };
-
-  const clearForm = () => {
-    setEditingId(null);
-    setFormData(emptyForm);
-  };
-
-  const fillCep = async (type: "origin" | "destination") => {
-    const cep = type === "origin" ? formData.originPostalCode : formData.destinationPostalCode;
-    if (!cep) {
-      toast.error("Informe um CEP");
+  const updateStatus = async (deliveryId: string, status: string) => {
+    const delivery = deliveries.find((item: any) => item.id === deliveryId);
+    if (delivery && (delivery.status === "entregue" || delivery.status === "cancelado")) {
+      toast.error("Esta entrega nao pode mais ser alterada pelo motorista");
       return;
     }
 
-    setLoadingCep(type);
-    try {
-      const result = await lookupCep(cep);
-      if (type === "origin") {
-        setFormData(prev => ({
-          ...prev,
-          originPostalCode: result.cep,
-          originAddress: result.fullAddress,
-        }));
-      } else {
-        setFormData(prev => ({
-          ...prev,
-          destinationPostalCode: result.cep,
-          destinationAddress: result.fullAddress,
-        }));
-      }
-      toast.success("CEP localizado com sucesso");
-    } catch (error: any) {
-      toast.error(error?.message ?? "Erro ao consultar CEP");
-    } finally {
-      setLoadingCep(null);
-    }
-  };
+    const confirmed = await confirm({
+      title: "Confirmar atualização de status",
+      description: "Deseja realmente alterar o status desta entrega? Esta ação registrará a sua localização no momento da atualização.",
+      confirmLabel: "Sim, atualizar",
+      cancelLabel: "Cancelar",
+      destructive: status === "cancelado",
+    });
 
-  const submitDelivery = async () => {
-    if (!formData.clientName || !formData.clientPhone || !formData.baseId || !formData.originAddress || !formData.destinationAddress) {
-      toast.error("Preencha os campos obrigatórios");
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      const payload = {
-        clientName: formData.clientName,
-        clientPhone: formData.clientPhone || undefined,
-        baseId: formData.baseId || undefined,
-        originPostalCode: formData.originPostalCode || undefined,
-        originAddress: formData.originAddress,
-        destinationPostalCode: formData.destinationPostalCode || undefined,
-        destinationAddress: formData.destinationAddress,
-        driverId: formData.driverId || undefined,
-        scheduledAt: formData.scheduledAt ? new Date(formData.scheduledAt) : undefined,
-        notes: formData.notes || undefined,
-      };
-
-      if (editingId) {
-        await updateMutation.mutateAsync({
-          id: editingId,
-          ...payload,
-        });
-        toast.success("Entrega atualizada com sucesso");
-      } else {
-        await createMutation.mutateAsync(payload);
-        toast.success("Entrega criada com sucesso");
-      }
-
-      setOpen(false);
-      clearForm();
-      refetch();
-    } catch {
-      toast.error("Não foi possível salvar a entrega");
-    }
-  };
-
-  const updateDeliveryStatus = async (deliveryId: string, newStatus: string) => {
-    try {
+      const location = await captureCurrentLocation();
       await updateStatusMutation.mutateAsync({
         id: deliveryId,
-        status: newStatus as any,
+        status: status as any,
+        latitude: location?.latitude,
+        longitude: location?.longitude,
+        accuracy: location?.accuracy ?? undefined,
+        metadata: {
+          source: "driver_portal",
+          driverId: driver?.id ?? null,
+        },
       });
       toast.success("Status atualizado");
       refetch();
     } catch {
-      toast.error("Erro ao atualizar status");
+      toast.error("Nao foi possivel atualizar o status");
     }
   };
 
-  const deleteDelivery = async (deliveryId: string) => {
-    const approved = await confirm({
-      title: "Excluir entrega?",
-      description: "Esta ação remove a entrega e todo o histórico associado.",
-      confirmLabel: "Excluir",
-      destructive: true,
-    });
-    if (!approved) return;
-
-    try {
-      await deleteMutation.mutateAsync(deliveryId);
-      toast.success("Entrega excluída");
-      refetch();
-    } catch {
-      toast.error("Não foi possível excluir a entrega");
-    }
-  };
-
-  const bulkDelete = async () => {
-    if (selectedIds.length === 0) return;
-    const approved = await confirm({
-      title: "Excluir entregas selecionadas?",
-      description: `Você está prestes a excluir ${selectedIds.length} entregas.`,
-      confirmLabel: "Excluir em lote",
-      destructive: true,
-    });
-    if (!approved) return;
-
-    try {
-      await bulkDeleteMutation.mutateAsync(selectedIds);
-      setSelectedIds([]);
-      toast.success("Entregas excluídas");
-      refetch();
-    } catch {
-      toast.error("Não foi possível excluir as entregas selecionadas");
-    }
-  };
-
-  const openReschedule = (ids: string[]) => {
-    setRescheduleTarget(ids);
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setRescheduleForm({
-      driverId: "",
-      scheduledAt: toDateTimeLocalValue(tomorrow),
-    });
-    setRescheduleOpen(true);
-  };
-
-  const submitReschedule = async () => {
-    if (!rescheduleTarget || !rescheduleForm.scheduledAt) {
-      toast.error("Informe o novo dia");
-      return;
-    }
-
-    try {
-      await bulkRescheduleMutation.mutateAsync({
-        ids: rescheduleTarget,
-        driverId: rescheduleForm.driverId || undefined,
-        scheduledAt: new Date(rescheduleForm.scheduledAt),
-        status: "pendente",
-      });
-      setRescheduleOpen(false);
-      setRescheduleTarget(null);
-      setSelectedIds([]);
-      toast.success("Entregas remanejadas");
-      refetch();
-    } catch {
-      toast.error("Não foi possível remanejar as entregas");
-    }
-  };
-
-  const toggleSelectAll = (checked: boolean) => {
-    setSelectedIds(checked ? visibleDeliveries.map((delivery: any) => delivery.id) : []);
-  };
-
-  const toggleSelected = (deliveryId: string, checked: boolean) => {
-    setSelectedIds(prev =>
-      checked ? [...prev, deliveryId] : prev.filter(id => id !== deliveryId)
-    );
-  };
-
-  const selectedBase = useMemo(
-    () => bases.find((base: any) => String(base.id) === String(formData.baseId)) ?? null,
-    [bases, formData.baseId]
-  );
-
-  const applyBase = (base: any) => {
-    if (!base) return;
-    const addressParts = [base.street, base.number, base.neighborhood, base.city, base.state]
-      .filter(Boolean)
-      .join(", ");
-    setFormData(prev => ({
-      ...prev,
-      baseId: base.id,
-      originPostalCode: base.postalCode ?? prev.originPostalCode,
-      originAddress: addressParts || prev.originAddress,
-    }));
-  };
-
-  useEffect(() => {
-    if (!formData.baseId && bases.length > 0) {
-      const primaryBase = bases.find((base: any) => base.isPrimary) ?? bases[0];
-      if (primaryBase) {
-        applyBase(primaryBase);
-      }
-    }
-  }, [bases, formData.baseId]);
-
-  const toggleExpanded = (deliveryId: string) => {
-    setExpandedIds(prev =>
-      prev.includes(deliveryId) ? prev.filter(id => id !== deliveryId) : [...prev, deliveryId]
-    );
-  };
-
-  function DeliveryRow({ delivery }: { delivery: any }) {
-    const expanded = expandedIds.includes(delivery.id);
-    const { data: events = [] } = trpc.deliveryEvents.list.useQuery(
-      { deliveryId: delivery.id },
-      { enabled: expanded }
-    );
-
-    const latestEvent = events[0];
-    const canReschedule = delivery.status !== "entregue" && delivery.status !== "cancelado";
-
+  if (loading) {
     return (
-      <>
-        <tr className="border-b border-border hover:bg-muted/50">
-          <td className="py-3 px-4">
-            <Checkbox
-              checked={selectedIds.includes(delivery.id)}
-              onCheckedChange={value => toggleSelected(delivery.id, Boolean(value))}
-            />
-          </td>
-          <td className="py-3 px-4">
-            <div className="font-medium">{delivery.clientName}</div>
-            <div className="text-xs text-muted-foreground">{delivery.originPostalCode || "-"}</div>
-          </td>
-          <td className="py-3 px-4">
-            <div className="flex items-start gap-2 text-muted-foreground">
-              <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-              <div>
-                <div className="font-medium text-foreground">{delivery.destinationAddress}</div>
-                <div className="text-xs">{delivery.destinationPostalCode || "-"}</div>
-              </div>
-            </div>
-          </td>
-          <td className="py-3 px-4">
-            <Select value={delivery.status} onValueChange={value => updateDeliveryStatus(delivery.id, value)}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DELIVERY_STATUSES.filter(status => status.value !== "all").map(status => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span
-              className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[delivery.status] || "bg-gray-100 text-gray-800"}`}
-            >
-              {DELIVERY_STATUSES.find(s => s.value === delivery.status)?.label ?? delivery.status}
-            </span>
-          </td>
-          <td className="py-3 px-4 text-muted-foreground">
-            <div>{formatDateTime(delivery.scheduledAt)}</div>
-            <div className="text-xs">Ordem: {delivery.routeOrder ?? "automatica"}</div>
-            <div className="text-xs">
-              {latestEvent ? `Ultima acao: ${formatDateTime(latestEvent.recordedAt)}` : "Sem log ainda"}
-            </div>
-          </td>
-          <td className="py-3 px-4">
-            <div className="flex flex-wrap gap-2">
-              <Button variant="ghost" size="sm" onClick={() => openEdit(delivery)}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Editar
-              </Button>
-              {canReschedule ? (
-                <Button variant="ghost" size="sm" onClick={() => openReschedule([delivery.id])}>
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Remanejar
-                </Button>
-              ) : null}
-              <Button variant="ghost" size="sm" onClick={() => openGpsRoute(delivery.destinationAddress)}>
-                <Navigation className="mr-2 h-4 w-4" />
-                GPS
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => toggleExpanded(delivery.id)}>
-                {expanded ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
-                {expanded ? "Recolher" : "Detalhes"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => deleteDelivery(delivery.id)}
-              >
-                Excluir
-              </Button>
-            </div>
-          </td>
-        </tr>
-        {expanded ? (
-          <tr className="border-b border-border bg-muted/20">
-            <td colSpan={6} className="px-4 py-4">
-              <div className="grid gap-4 lg:grid-cols-3">
-                <div className="rounded-xl border border-border/60 bg-background p-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Trajeto
-                  </div>
-                  <div className="mt-2 text-sm text-foreground">
-                    Cliente: {delivery.clientName}
-                  </div>
-                  <div className="mt-1 text-sm text-foreground">
-                    Telefone: {delivery.clientPhone || "-"}
-                  </div>
-                  <div className="mt-1 text-sm text-foreground">
-                    Base: {bases.find((base: any) => String(base.id) === String(delivery.baseId))?.name || "Base principal"}
-                  </div>
-                  <div className="mt-2 text-sm text-foreground">
-                    Origem: {delivery.originAddress}
-                  </div>
-                  <div className="mt-1 text-sm text-foreground">
-                    Destino: {delivery.destinationAddress}
-                  </div>
-                  <div className="mt-3 text-xs text-muted-foreground">
-                    Motorista: {drivers.find((driver: any) => String(driver.id) === String(delivery.driverId))?.name || "Sem motorista"}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {delivery.notes || "Sem observacoes"}
-                  </div>
-                  {delivery.clientPhone ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-4 gap-2"
-                      onClick={() => openWhatsApp(delivery.clientPhone, `Olá ${delivery.clientName}, estou falando sobre sua entrega.`)}
-                    >
-                      <MessageCircleMore className="h-4 w-4" />
-                      Contatar cliente
-                    </Button>
-                  ) : null}
-                </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
-                <div className="rounded-xl border border-border/60 bg-background p-4 lg:col-span-2">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Clock3 className="h-4 w-4 text-primary" />
-                    Historico de status
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {events.length === 0 ? (
-                      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        Nenhum evento registrado ainda.
-                      </div>
-                    ) : (
-                      events.map((event: any) => (
-                        <div key={event.id} className="rounded-lg border border-border/60 p-3 text-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-medium text-foreground">
-                              {event.fromStatus || "inicio"} {" -> "} {event.toStatus}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatDateTime(event.recordedAt)}
-                            </div>
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {event.latitude && event.longitude
-                              ? `GPS ${event.latitude}, ${event.longitude}`
-                              : "GPS nao capturado"}
-                            {event.accuracy ? ` • Precisao ${event.accuracy}m` : ""}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </td>
-          </tr>
-        ) : null}
-      </>
+  if (!driver) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Painel do motorista</CardTitle>
+          <CardDescription>
+            Seu usuario ainda nao esta vinculado a um motorista cadastrado.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">O que fazer agora</p>
+            <p className="mt-2">
+              Peça ao gestor para vincular seu usuario ao cadastro de motorista. Assim voce vai
+              enxergar suas entregas, status e veiculos.
+            </p>
+            <p className="mt-2">
+              Login atual: <span className="font-medium text-foreground">{user?.email || "-"}</span>
+            </p>
+          </div>
+          <Button onClick={() => (window.location.href = "/")}>Voltar ao sistema</Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Entregas</h1>
-          <p className="text-muted-foreground mt-1">
-            Cadastro, revisão, remanejamento e acompanhamento operacional
-          </p>
-        </div>
-
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={openCreate}>
-              <Plus className="w-4 h-4" />
-              Nova Entrega
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">Painel do Motorista</h1>
+        <p className="mt-1 text-muted-foreground">
+          {driver.name} • acompanhe as entregas do dia e atualize os status em tempo real
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {driver.phone ? (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => openWhatsApp(driver.phone, `Olá ${driver.name}, tudo bem?`)}
+            >
+              <MessageCircleMore className="h-4 w-4" />
+              WhatsApp do motorista
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingId ? "Editar Entrega" : "Criar Nova Entrega"}</DialogTitle>
-              <DialogDescription>
-                Informe os dados da coleta e da entrega. O CEP pode preencher o endereço automaticamente.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2 md:col-span-2">
-                <Label>Cliente *</Label>
-                <Input
-                  placeholder="Ex: João Silva"
-                  value={formData.clientName}
-                  onChange={e => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Telefone do cliente *</Label>
-                <Input
-                  placeholder="(81) 99999-9999"
-                  value={formData.clientPhone}
-                  onChange={e =>
-                    setFormData(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
-                  }
-                  inputMode="tel"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Base operacional *</Label>
-                <Select
-                  value={formData.baseId || "unassigned"}
-                  onValueChange={value => {
-                    const base = bases.find((entry: any) => String(entry.id) === value);
-                    if (base) {
-                      setFormData(prev => ({ ...prev, baseId: value }));
-                      applyBase(base);
-                      return;
-                    }
-                    setFormData(prev => ({ ...prev, baseId: "" }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a base" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">Base principal automática</SelectItem>
-                    {bases.map((base: any) => (
-                      <SelectItem key={base.id} value={String(base.id)}>
-                        {base.name}
-                        {base.isPrimary ? " (principal)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedBase ? (
-                  <p className="text-xs text-muted-foreground">
-                    {selectedBase.street}, {selectedBase.number || "-"} - {selectedBase.city}/{selectedBase.state}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                <Label>CEP de origem</Label>
-                <div className="flex gap-2">
-                <Input
-                  placeholder="00000-000"
-                  value={formData.originPostalCode}
-                  onChange={e =>
-                    setFormData(prev => ({
-                      ...prev,
-                      originPostalCode: formatCep(e.target.value),
-                    }))
-                  }
-                  inputMode="numeric"
-                />
-                  <Button type="button" variant="outline" onClick={() => fillCep("origin")} disabled={loadingCep === "origin"}>
-                    Consultar
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>CEP de destino</Label>
-                <div className="flex gap-2">
-                <Input
-                  placeholder="00000-000"
-                  value={formData.destinationPostalCode}
-                  onChange={e =>
-                    setFormData(prev => ({
-                      ...prev,
-                      destinationPostalCode: formatCep(e.target.value),
-                    }))
-                  }
-                  inputMode="numeric"
-                />
-                  <Button type="button" variant="outline" onClick={() => fillCep("destination")} disabled={loadingCep === "destination"}>
-                    Consultar
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Endereço de origem *</Label>
-                <Input
-                  placeholder="Rua, número, bairro"
-                  value={formData.originAddress}
-                  onChange={e => setFormData(prev => ({ ...prev, originAddress: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Endereço de destino *</Label>
-                <Input
-                  placeholder="Rua, número, bairro"
-                  value={formData.destinationAddress}
-                  onChange={e => setFormData(prev => ({ ...prev, destinationAddress: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Motorista ativo</Label>
-                <Select value={formData.driverId || "unassigned"} onValueChange={value => setFormData(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um motorista ativo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">Sem motorista</SelectItem>
-                    {deliveryDriverOptions.map((driver: any) => (
-                      <SelectItem key={driver.id} value={String(driver.id)}>
-                        {driver.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Data/Hora Agendada</Label>
-                <Input
-                  type="datetime-local"
-                  value={formData.scheduledAt}
-                  onChange={e => setFormData(prev => ({ ...prev, scheduledAt: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <Label>Observações</Label>
-                <Textarea
-                  placeholder="Observações adicionais..."
-                  value={formData.notes}
-                  onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                />
-              </div>
-
-              <Button onClick={submitDelivery} className="md:col-span-2">
-                {editingId ? "Salvar alterações" : "Criar Entrega"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+          ) : null}
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Em andamento</p>
-            <p className="text-2xl font-semibold">{openDeliveries.length}</p>
+            <div className="flex items-center gap-3">
+              <Package2 className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm text-muted-foreground">Entregas hoje</p>
+                <p className="text-2xl font-semibold">{todayDeliveries.length}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Selecionadas</p>
-            <p className="text-2xl font-semibold">{selectedIds.length}</p>
+            <div className="flex items-center gap-3">
+              <Clock3 className="h-5 w-5 text-blue-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Historico</p>
+                <p className="text-2xl font-semibold">{historyDeliveries.length}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Em rota</p>
-            <p className="text-2xl font-semibold">{deliveriesInProgress.length}</p>
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Concluidas</p>
+                <p className="text-2xl font-semibold">
+                  {deliveries.filter((delivery: any) => delivery.status === "entregue").length}
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Entregues</p>
-            <p className="text-2xl font-semibold">
-              {visibleDeliveries.filter((d: any) => d.status === "entregue").length}
-            </p>
+            <div className="flex items-center gap-3">
+              <Truck className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm text-muted-foreground">Veiculos</p>
+                <p className="text-2xl font-semibold">{vehicles.length}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <div className="grid gap-4 lg:grid-cols-5">
-            <div className="flex-1 relative lg:col-span-2">
-              <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por cliente, CEP ou endereço..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={driverFilter} onValueChange={setDriverFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filtrar por motorista ativo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os motoristas ativos</SelectItem>
-                {driverFilterOptions.map((driver: any) => (
-                  <SelectItem key={driver.id} value={String(driver.id)}>
-                    {driver.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="grid grid-cols-2 gap-2">
-              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filtrar por status" />
-              </SelectTrigger>
-              <SelectContent>
-                {DELIVERY_STATUSES.map(status => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {selectedIds.length > 0 ? (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <ShieldAlert className="h-4 w-4 text-primary" />
-                {selectedIds.length} entregas selecionadas
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => openReschedule(selectedIds)}>
-                  Remanejar selecionadas
-                </Button>
-                <Button variant="destructive" onClick={bulkDelete}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Excluir em lote
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <Card>
         <CardHeader>
-          <CardTitle>Lista de Entregas</CardTitle>
+          <CardTitle>Veiculos vinculados</CardTitle>
           <CardDescription>
-            {visibleDeliveries.length} entregas encontradas. A ordenação considera a ordem manual e, depois, a data.
+            {vehicles.length > 0
+              ? "Os veiculos cadastrados para o seu perfil aparecem abaixo."
+              : "Nenhum veiculo foi cadastrado para este motorista ainda."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="w-10 py-3 px-4">
-                    <Checkbox
-                      checked={visibleDeliveries.length > 0 && selectedIds.length === visibleDeliveries.length}
-                      onCheckedChange={value => toggleSelectAll(Boolean(value))}
-                    />
-                  </th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Cliente</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Destino</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Status</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Agenda</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleDeliveries.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-10 text-center text-muted-foreground">
-                      Nenhuma entrega encontrada
-                    </td>
-                  </tr>
-                ) : (
-                  visibleDeliveries.map((delivery: any) => <DeliveryRow key={delivery.id} delivery={delivery} />)
-                )}
-              </tbody>
-            </table>
+          <div className="grid gap-3 md:grid-cols-2">
+            {vehicles.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                Solicite ao gestor o cadastro do veiculo principal para facilitar a operacao.
+              </div>
+            ) : (
+              vehicles.map((vehicle: any) => (
+                <div key={vehicle.id} className="rounded-lg border border-border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{vehicle.model}</p>
+                      <p className="text-sm text-muted-foreground">{vehicle.plate}</p>
+                      <p className="text-xs text-muted-foreground">{vehicle.nickname || "-"}</p>
+                    </div>
+                    {vehicle.isPrimary ? (
+                      <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                        Principal
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {primaryVehicle ? (
+            <div className="mt-4 rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground">
+              Veiculo principal:{" "}
+              <span className="font-medium text-foreground">
+                {primaryVehicle.model} • {primaryVehicle.plate}
+              </span>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Entregas de hoje</CardTitle>
+          <CardDescription>Atualize a etapa assim que cada entrega avancar</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {todayDeliveries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma entrega programada para hoje.</p>
+            ) : (
+              todayDeliveries.map((delivery: any) => (
+                <DriverDeliveryCard
+                  key={delivery.id}
+                  delivery={delivery}
+                  onStatusChange={updateStatus}
+                />
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
 
-      <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remanejar entregas</DialogTitle>
-            <DialogDescription>
-              Reagende para o dia seguinte ou para a data desejada e escolha o motorista.
-            </DialogDescription>
-          </DialogHeader>
+      <Card>
+        <CardHeader>
+          <CardTitle>Historico</CardTitle>
+          <CardDescription>Entregas anteriores do motorista</CardDescription>
+        </CardHeader>
+        <CardContent>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Motorista ativo</Label>
-              <Select value={rescheduleForm.driverId || "unassigned"} onValueChange={value => setRescheduleForm(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um motorista ativo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Manter motorista atual</SelectItem>
-                  {rescheduleDriverOptions.map((driver: any) => (
-                    <SelectItem key={driver.id} value={String(driver.id)}>
-                      {driver.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Nova data</Label>
-              <Input
-                type="datetime-local"
-                value={rescheduleForm.scheduledAt}
-                onChange={e => setRescheduleForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
-              />
-            </div>
-            <Button onClick={submitReschedule} className="w-full">
-              Confirmar remanejamento
-            </Button>
+            {historyDeliveries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum historico disponivel.</p>
+            ) : (
+              historyDeliveries.map((delivery: any) => (
+                <DriverDeliveryCard
+                  key={delivery.id}
+                  delivery={delivery}
+                  onStatusChange={updateStatus}
+                />
+              ))
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -20968,6 +19540,1066 @@ before update on public.delivery_events
 for each row execute function public.set_updated_at();
 </file>
 
+<file path="client/src/pages/Deliveries.tsx">
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/components/ConfirmProvider";
+import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
+import { formatCep, formatPhone } from "@/lib/format";
+import { openWhatsApp, openGpsRoute } from "@/lib/navigation";
+import { trpc } from "@/lib/trpc";
+import { lookupCep } from "@/lib/cep";
+import {
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  MessageCircleMore,
+  MapPin,
+  Navigation,
+  Pencil,
+  Plus,
+  Search,
+  ShieldAlert,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+
+const DELIVERY_STATUSES = [
+  { value: "all", label: "Todos" },
+  { value: "pendente", label: "Pendente" },
+  { value: "em_rota", label: "Em rota" },
+  { value: "entregue", label: "Entregue" },
+  { value: "cancelado", label: "Cancelado" },
+] as const;
+
+const STATUS_COLORS: Record<string, string> = {
+  pendente: "bg-yellow-100 text-yellow-800",
+  em_rota: "bg-blue-100 text-blue-800",
+  entregue: "bg-green-100 text-green-800",
+  cancelado: "bg-red-100 text-red-800",
+};
+
+const STATUS_PRIORITY: Record<string, number> = {
+  em_rota: 0,
+  pendente: 1,
+  entregue: 2,
+  cancelado: 3,
+};
+
+function compareDeliveries(a: any, b: any) {
+  const statusDiff = (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99);
+  if (statusDiff !== 0) return statusDiff;
+
+  const routeOrderA = a.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  const routeOrderB = b.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  if (routeOrderA !== routeOrderB) return routeOrderA - routeOrderB;
+
+  const scheduledA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  const scheduledB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  if (scheduledA !== scheduledB) return scheduledA - scheduledB;
+
+  return String(a.clientName ?? "").localeCompare(String(b.clientName ?? ""));
+}
+
+type DeliveryForm = {
+  clientName: string;
+  clientPhone: string;
+  baseId: string;
+  originPostalCode: string;
+  originAddress: string;
+  destinationPostalCode: string;
+  destinationAddress: string;
+  driverId: string;
+  notes: string;
+  scheduledAt: string;
+  status: "pendente" | "em_rota" | "entregue" | "cancelado";
+};
+
+type RescheduleForm = {
+  driverId: string;
+  scheduledAt: string;
+};
+
+const emptyForm: DeliveryForm = {
+  clientName: "",
+  clientPhone: "",
+  baseId: "",
+  originPostalCode: "",
+  originAddress: "",
+  destinationPostalCode: "",
+  destinationAddress: "",
+  driverId: "",
+  notes: "",
+  scheduledAt: "",
+  status: "pendente",
+};
+
+export default function Deliveries() {
+  const { confirm } = useConfirm();
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [driverFilter, setDriverFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<string[] | null>(null);
+  const [rescheduleForm, setRescheduleForm] = useState<RescheduleForm>({
+    driverId: "",
+    scheduledAt: "",
+  });
+  const [loadingCep, setLoadingCep] = useState<"origin" | "destination" | null>(null);
+  const [formData, setFormData] = useState<DeliveryForm>(emptyForm);
+  const [pendingEditId, setPendingEditId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("edit");
+  });
+
+  const queryInput = useMemo(() => {
+    const input: {
+      status?: string;
+      driverId?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {};
+
+    if (statusFilter !== "all") input.status = statusFilter;
+    if (driverFilter !== "all") input.driverId = driverFilter;
+    if (startDate) input.startDate = new Date(`${startDate}T00:00:00`);
+    if (endDate) input.endDate = new Date(`${endDate}T23:59:59`);
+    return input;
+  }, [driverFilter, endDate, startDate, statusFilter]);
+
+  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery(queryInput);
+  const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: bases = [] } = trpc.operationalBases.list.useQuery();
+  const createMutation = trpc.deliveries.create.useMutation();
+  const updateMutation = trpc.deliveries.update.useMutation();
+  const updateStatusMutation = trpc.deliveries.updateStatus.useMutation();
+  const deleteMutation = trpc.deliveries.delete.useMutation();
+  const bulkDeleteMutation = trpc.deliveries.bulkDelete.useMutation();
+  const bulkRescheduleMutation = trpc.deliveries.bulkReschedule.useMutation();
+
+  const visibleDeliveries = useMemo(() => {
+    const filtered = deliveries.filter((d: any) =>
+      [d.clientName, d.originAddress, d.destinationAddress, d.originPostalCode, d.destinationPostalCode]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
+    );
+
+    return [...filtered].sort(compareDeliveries);
+  }, [deliveries, searchTerm]);
+
+  const activeDriverIds = useMemo(
+    () =>
+      new Set(
+        users
+          .filter((user: any) => user.role === "motorista" && user.status === "active")
+          .map((user: any) => user.id)
+      ),
+    [users]
+  );
+
+  const activeDrivers = useMemo(
+    () => drivers.filter((driver: any) => driver.userId && activeDriverIds.has(driver.userId)),
+    [activeDriverIds, drivers]
+  );
+
+  const selectedFormDriver = useMemo(
+    () => drivers.find((driver: any) => String(driver.id) === String(formData.driverId)) ?? null,
+    [drivers, formData.driverId]
+  );
+
+  const selectedRescheduleDriver = useMemo(
+    () => drivers.find((driver: any) => String(driver.id) === String(rescheduleForm.driverId)) ?? null,
+    [drivers, rescheduleForm.driverId]
+  );
+
+  const selectedFilterDriver = useMemo(
+    () => drivers.find((driver: any) => String(driver.id) === String(driverFilter)) ?? null,
+    [driverFilter, drivers]
+  );
+
+  const deliveryDriverOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const driver of activeDrivers) {
+      map.set(driver.id, driver);
+    }
+    if (selectedFormDriver) {
+      map.set(selectedFormDriver.id, selectedFormDriver);
+    }
+    return [...map.values()];
+  }, [activeDrivers, selectedFormDriver]);
+
+  const rescheduleDriverOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const driver of activeDrivers) {
+      map.set(driver.id, driver);
+    }
+    if (selectedRescheduleDriver) {
+      map.set(selectedRescheduleDriver.id, selectedRescheduleDriver);
+    }
+    return [...map.values()];
+  }, [activeDrivers, selectedRescheduleDriver]);
+
+  const driverFilterOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const driver of activeDrivers) {
+      map.set(driver.id, driver);
+    }
+    if (selectedFilterDriver) {
+      map.set(selectedFilterDriver.id, selectedFilterDriver);
+    }
+    return [...map.values()];
+  }, [activeDrivers, selectedFilterDriver]);
+
+  const openDeliveries = visibleDeliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado");
+  const deliveriesInProgress = visibleDeliveries.filter((delivery: any) => delivery.status === "em_rota");
+
+  const openCreate = () => {
+    setEditingId(null);
+    setFormData(emptyForm);
+    setOpen(true);
+  };
+
+  const openEdit = (delivery: any) => {
+    setEditingId(delivery.id);
+    setFormData({
+      clientName: delivery.clientName ?? "",
+      clientPhone: delivery.clientPhone ?? "",
+      baseId: delivery.baseId ?? "",
+      originPostalCode: delivery.originPostalCode ?? "",
+      originAddress: delivery.originAddress ?? "",
+      destinationPostalCode: delivery.destinationPostalCode ?? "",
+      destinationAddress: delivery.destinationAddress ?? "",
+      driverId: delivery.driverId ? String(delivery.driverId) : "",
+      notes: delivery.notes ?? "",
+      scheduledAt: toDateTimeLocalValue(delivery.scheduledAt),
+      status: delivery.status ?? "pendente",
+    });
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!pendingEditId || deliveries.length === 0) return;
+
+    const delivery = deliveries.find((item: any) => String(item.id) === String(pendingEditId));
+    if (!delivery) return;
+
+    openEdit(delivery);
+    setPendingEditId(null);
+    window.history.replaceState({}, "", "/deliveries");
+  }, [deliveries, pendingEditId]);
+
+  const clearForm = () => {
+    setEditingId(null);
+    setFormData(emptyForm);
+  };
+
+  const fillCep = async (type: "origin" | "destination") => {
+    const cep = type === "origin" ? formData.originPostalCode : formData.destinationPostalCode;
+    if (!cep) {
+      toast.error("Informe um CEP");
+      return;
+    }
+
+    setLoadingCep(type);
+    try {
+      const result = await lookupCep(cep);
+      if (type === "origin") {
+        setFormData(prev => ({
+          ...prev,
+          originPostalCode: result.cep,
+          originAddress: result.fullAddress,
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          destinationPostalCode: result.cep,
+          destinationAddress: result.fullAddress,
+        }));
+      }
+      toast.success("CEP localizado com sucesso");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao consultar CEP");
+    } finally {
+      setLoadingCep(null);
+    }
+  };
+
+  const submitDelivery = async () => {
+    if (!formData.clientName || !formData.clientPhone || !formData.baseId || !formData.originAddress || !formData.destinationAddress) {
+      toast.error("Preencha os campos obrigatórios");
+      return;
+    }
+
+    try {
+      const payload = {
+        clientName: formData.clientName,
+        clientPhone: formData.clientPhone || undefined,
+        baseId: formData.baseId || undefined,
+        originPostalCode: formData.originPostalCode || undefined,
+        originAddress: formData.originAddress,
+        destinationPostalCode: formData.destinationPostalCode || undefined,
+        destinationAddress: formData.destinationAddress,
+        driverId: formData.driverId || undefined,
+        scheduledAt: formData.scheduledAt ? new Date(formData.scheduledAt) : undefined,
+        notes: formData.notes || undefined,
+        ...(editingId ? { status: formData.status } : {}),
+      };
+
+      if (editingId) {
+        await updateMutation.mutateAsync({
+          id: editingId,
+          ...payload,
+        });
+        toast.success("Entrega atualizada com sucesso");
+      } else {
+        await createMutation.mutateAsync(payload);
+        toast.success("Entrega criada com sucesso");
+      }
+
+      setOpen(false);
+      clearForm();
+      refetch();
+    } catch {
+      toast.error("Não foi possível salvar a entrega");
+    }
+  };
+
+  const updateDeliveryStatus = async (deliveryId: string, newStatus: string) => {
+    try {
+      await updateStatusMutation.mutateAsync({
+        id: deliveryId,
+        status: newStatus as any,
+      });
+      toast.success("Status atualizado");
+      refetch();
+    } catch {
+      toast.error("Erro ao atualizar status");
+    }
+  };
+
+  const deleteDelivery = async (deliveryId: string) => {
+    const approved = await confirm({
+      title: "Excluir entrega?",
+      description: "Esta ação remove a entrega e todo o histórico associado.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!approved) return;
+
+    try {
+      await deleteMutation.mutateAsync(deliveryId);
+      toast.success("Entrega excluída");
+      refetch();
+    } catch {
+      toast.error("Não foi possível excluir a entrega");
+    }
+  };
+
+  const resetFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("all");
+    setDriverFilter("all");
+    setStartDate("");
+    setEndDate("");
+    setSelectedIds([]);
+    setExpandedIds([]);
+  };
+
+  const bulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    const approved = await confirm({
+      title: "Excluir entregas selecionadas?",
+      description: `Você está prestes a excluir ${selectedIds.length} entregas.`,
+      confirmLabel: "Excluir em lote",
+      destructive: true,
+    });
+    if (!approved) return;
+
+    try {
+      await bulkDeleteMutation.mutateAsync(selectedIds);
+      setSelectedIds([]);
+      toast.success("Entregas excluídas");
+      refetch();
+    } catch {
+      toast.error("Não foi possível excluir as entregas selecionadas");
+    }
+  };
+
+  const openReschedule = (ids: string[]) => {
+    setRescheduleTarget(ids);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setRescheduleForm({
+      driverId: "",
+      scheduledAt: toDateTimeLocalValue(tomorrow),
+    });
+    setRescheduleOpen(true);
+  };
+
+  const submitReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleForm.scheduledAt) {
+      toast.error("Informe o novo dia");
+      return;
+    }
+
+    try {
+      await bulkRescheduleMutation.mutateAsync({
+        ids: rescheduleTarget,
+        driverId: rescheduleForm.driverId || undefined,
+        scheduledAt: new Date(rescheduleForm.scheduledAt),
+        status: "pendente",
+      });
+      setRescheduleOpen(false);
+      setRescheduleTarget(null);
+      setSelectedIds([]);
+      toast.success("Entregas remanejadas");
+      refetch();
+    } catch {
+      toast.error("Não foi possível remanejar as entregas");
+    }
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    setSelectedIds(checked ? visibleDeliveries.map((delivery: any) => delivery.id) : []);
+  };
+
+  const toggleSelected = (deliveryId: string, checked: boolean) => {
+    setSelectedIds(prev =>
+      checked ? [...prev, deliveryId] : prev.filter(id => id !== deliveryId)
+    );
+  };
+
+  const selectedBase = useMemo(
+    () => bases.find((base: any) => String(base.id) === String(formData.baseId)) ?? null,
+    [bases, formData.baseId]
+  );
+
+  const applyBase = (base: any) => {
+    if (!base) return;
+    const addressParts = [base.street, base.number, base.neighborhood, base.city, base.state]
+      .filter(Boolean)
+      .join(", ");
+    setFormData(prev => ({
+      ...prev,
+      baseId: base.id,
+      originPostalCode: base.postalCode ?? prev.originPostalCode,
+      originAddress: addressParts || prev.originAddress,
+    }));
+  };
+
+  useEffect(() => {
+    if (!formData.baseId && bases.length > 0) {
+      const primaryBase = bases.find((base: any) => base.isPrimary) ?? bases[0];
+      if (primaryBase) {
+        applyBase(primaryBase);
+      }
+    }
+  }, [bases, formData.baseId]);
+
+  const toggleExpanded = (deliveryId: string) => {
+    setExpandedIds(prev =>
+      prev.includes(deliveryId) ? prev.filter(id => id !== deliveryId) : [...prev, deliveryId]
+    );
+  };
+
+  function DeliveryRow({ delivery }: { delivery: any }) {
+    const expanded = expandedIds.includes(delivery.id);
+    const { data: events = [] } = trpc.deliveryEvents.list.useQuery(
+      { deliveryId: delivery.id },
+      { enabled: expanded }
+    );
+
+    const latestEvent = events[0];
+    const canReschedule = delivery.status !== "entregue" && delivery.status !== "cancelado";
+
+    return (
+      <>
+        <tr className="border-b border-border hover:bg-muted/50">
+          <td className="py-3 px-4">
+            <Checkbox
+              checked={selectedIds.includes(delivery.id)}
+              onCheckedChange={value => toggleSelected(delivery.id, Boolean(value))}
+            />
+          </td>
+          <td className="py-3 px-4">
+            <div className="font-medium">{delivery.clientName}</div>
+            <div className="text-xs text-muted-foreground">{delivery.originPostalCode || "-"}</div>
+          </td>
+          <td className="py-3 px-4">
+            <div className="flex items-start gap-2 text-muted-foreground">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <div className="font-medium text-foreground">{delivery.destinationAddress}</div>
+                <div className="text-xs">{delivery.destinationPostalCode || "-"}</div>
+              </div>
+            </div>
+          </td>
+          <td className="py-3 px-4">
+            <Select value={delivery.status} onValueChange={value => updateDeliveryStatus(delivery.id, value)}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DELIVERY_STATUSES.filter(status => status.value !== "all").map(status => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span
+              className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[delivery.status] || "bg-gray-100 text-gray-800"}`}
+            >
+              {DELIVERY_STATUSES.find(s => s.value === delivery.status)?.label ?? delivery.status}
+            </span>
+          </td>
+          <td className="py-3 px-4 text-muted-foreground">
+            <div>{formatDateTime(delivery.scheduledAt)}</div>
+            <div className="text-xs">Ordem: {delivery.routeOrder ?? "automatica"}</div>
+            <div className="text-xs">
+              {latestEvent ? `Ultima acao: ${formatDateTime(latestEvent.recordedAt)}` : "Sem log ainda"}
+            </div>
+          </td>
+          <td className="py-3 px-4">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" onClick={() => openEdit(delivery)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Editar
+              </Button>
+              {canReschedule ? (
+                <Button variant="ghost" size="sm" onClick={() => openReschedule([delivery.id])}>
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Remanejar
+                </Button>
+              ) : null}
+              <Button variant="ghost" size="sm" onClick={() => openGpsRoute(delivery.destinationAddress)}>
+                <Navigation className="mr-2 h-4 w-4" />
+                GPS
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => toggleExpanded(delivery.id)}>
+                {expanded ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+                {expanded ? "Recolher" : "Detalhes"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => deleteDelivery(delivery.id)}
+              >
+                Excluir
+              </Button>
+            </div>
+          </td>
+        </tr>
+        {expanded ? (
+          <tr className="border-b border-border bg-muted/20">
+            <td colSpan={6} className="px-4 py-4">
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="rounded-xl border border-border/60 bg-background p-4">
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Trajeto
+                  </div>
+                  <div className="mt-2 text-sm text-foreground">
+                    Cliente: {delivery.clientName}
+                  </div>
+                  <div className="mt-1 text-sm text-foreground">
+                    Telefone: {delivery.clientPhone || "-"}
+                  </div>
+                  <div className="mt-1 text-sm text-foreground">
+                    Base: {bases.find((base: any) => String(base.id) === String(delivery.baseId))?.name || "Base principal"}
+                  </div>
+                  <div className="mt-2 text-sm text-foreground">
+                    Origem: {delivery.originAddress}
+                  </div>
+                  <div className="mt-1 text-sm text-foreground">
+                    Destino: {delivery.destinationAddress}
+                  </div>
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    Motorista: {drivers.find((driver: any) => String(driver.id) === String(delivery.driverId))?.name || "Sem motorista"}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {delivery.notes || "Sem observacoes"}
+                  </div>
+                  {delivery.clientPhone ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 gap-2"
+                      onClick={() => openWhatsApp(delivery.clientPhone, `Olá ${delivery.clientName}, estou falando sobre sua entrega.`)}
+                    >
+                      <MessageCircleMore className="h-4 w-4" />
+                      Contatar cliente
+                    </Button>
+                  ) : null}
+                </div>
+
+                <div className="rounded-xl border border-border/60 bg-background p-4 lg:col-span-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Clock3 className="h-4 w-4 text-primary" />
+                    Historico de status
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {events.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                        Nenhum evento registrado ainda.
+                      </div>
+                    ) : (
+                      events.map((event: any) => (
+                        <div key={event.id} className="rounded-lg border border-border/60 p-3 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-medium text-foreground">
+                              {event.fromStatus || "inicio"} {" -> "} {event.toStatus}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>{formatDateTime(event.recordedAt)}</span>
+                              {event.latitude && event.longitude ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-2 px-2 text-xs"
+                                  onClick={() =>
+                                    openGpsRoute(`${event.latitude},${event.longitude}`)
+                                  }
+                                >
+                                  <Navigation className="h-3.5 w-3.5" />
+                                  GPS
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {event.latitude && event.longitude
+                              ? `GPS ${event.latitude}, ${event.longitude}`
+                              : "GPS nao capturado"}
+                            {event.accuracy ? ` • Precisao ${event.accuracy}m` : ""}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Entregas</h1>
+          <p className="text-muted-foreground mt-1">
+            Cadastro, revisão, remanejamento e acompanhamento operacional
+          </p>
+        </div>
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={openCreate}>
+              <Plus className="w-4 h-4" />
+              Nova Entrega
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingId ? "Editar Entrega" : "Criar Nova Entrega"}</DialogTitle>
+              <DialogDescription>
+                Informe os dados da coleta e da entrega. O CEP pode preencher o endereço automaticamente.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2 md:col-span-2">
+                <Label>Cliente *</Label>
+                <Input
+                  placeholder="Ex: João Silva"
+                  value={formData.clientName}
+                  onChange={e => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Telefone do cliente *</Label>
+                <Input
+                  placeholder="(81) 99999-9999"
+                  value={formData.clientPhone}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
+                  }
+                  inputMode="tel"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Base operacional *</Label>
+                <Select
+                  value={formData.baseId || "unassigned"}
+                  onValueChange={value => {
+                    const base = bases.find((entry: any) => String(entry.id) === value);
+                    if (base) {
+                      setFormData(prev => ({ ...prev, baseId: value }));
+                      applyBase(base);
+                      return;
+                    }
+                    setFormData(prev => ({ ...prev, baseId: "" }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a base" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Base principal automática</SelectItem>
+                    {bases.map((base: any) => (
+                      <SelectItem key={base.id} value={String(base.id)}>
+                        {base.name}
+                        {base.isPrimary ? " (principal)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedBase ? (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedBase.street}, {selectedBase.number || "-"} - {selectedBase.city}/{selectedBase.state}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label>CEP de origem</Label>
+                <div className="flex gap-2">
+                <Input
+                  placeholder="00000-000"
+                  value={formData.originPostalCode}
+                  onChange={e =>
+                    setFormData(prev => ({
+                      ...prev,
+                      originPostalCode: formatCep(e.target.value),
+                    }))
+                  }
+                  inputMode="numeric"
+                />
+                  <Button type="button" variant="outline" onClick={() => fillCep("origin")} disabled={loadingCep === "origin"}>
+                    Consultar
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>CEP de destino</Label>
+                <div className="flex gap-2">
+                <Input
+                  placeholder="00000-000"
+                  value={formData.destinationPostalCode}
+                  onChange={e =>
+                    setFormData(prev => ({
+                      ...prev,
+                      destinationPostalCode: formatCep(e.target.value),
+                    }))
+                  }
+                  inputMode="numeric"
+                />
+                  <Button type="button" variant="outline" onClick={() => fillCep("destination")} disabled={loadingCep === "destination"}>
+                    Consultar
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Endereço de origem *</Label>
+                <Input
+                  placeholder="Rua, número, bairro"
+                  value={formData.originAddress}
+                  onChange={e => setFormData(prev => ({ ...prev, originAddress: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Endereço de destino *</Label>
+                <Input
+                  placeholder="Rua, número, bairro"
+                  value={formData.destinationAddress}
+                  onChange={e => setFormData(prev => ({ ...prev, destinationAddress: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Motorista ativo</Label>
+                <Select value={formData.driverId || "unassigned"} onValueChange={value => setFormData(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um motorista ativo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Sem motorista</SelectItem>
+                    {deliveryDriverOptions.map((driver: any) => (
+                      <SelectItem key={driver.id} value={String(driver.id)}>
+                        {driver.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Data/Hora Agendada</Label>
+                <Input
+                  type="datetime-local"
+                  value={formData.scheduledAt}
+                  onChange={e => setFormData(prev => ({ ...prev, scheduledAt: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Observações</Label>
+                <Textarea
+                  placeholder="Observações adicionais..."
+                  value={formData.notes}
+                  onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+
+              {editingId ? (
+                <div className="space-y-2">
+                  <Label>Status da entrega</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={value =>
+                      setFormData(prev => ({
+                        ...prev,
+                        status: value as DeliveryForm["status"],
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DELIVERY_STATUSES.filter(status => status.value !== "all").map(status => (
+                        <SelectItem key={status.value} value={status.value}>
+                          {status.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+
+              <Button onClick={submitDelivery} className="md:col-span-2">
+                {editingId ? "Salvar alterações" : "Criar Entrega"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Em andamento</p>
+            <p className="text-2xl font-semibold">{openDeliveries.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Selecionadas</p>
+            <p className="text-2xl font-semibold">{selectedIds.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Em rota</p>
+            <p className="text-2xl font-semibold">{deliveriesInProgress.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Entregues</p>
+            <p className="text-2xl font-semibold">
+              {visibleDeliveries.filter((d: any) => d.status === "entregue").length}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid gap-4 lg:grid-cols-5">
+            <div className="flex-1 relative lg:col-span-2">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por cliente, CEP ou endereço..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={driverFilter} onValueChange={setDriverFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filtrar por motorista ativo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os motoristas ativos</SelectItem>
+                {driverFilterOptions.map((driver: any) => (
+                  <SelectItem key={driver.id} value={String(driver.id)}>
+                    {driver.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filtrar por status" />
+              </SelectTrigger>
+              <SelectContent>
+                {DELIVERY_STATUSES.map(status => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-end lg:col-span-5">
+              <Button variant="outline" onClick={resetFilters} className="ml-auto gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Limpar filtros
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {selectedIds.length > 0 ? (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                {selectedIds.length} entregas selecionadas
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => openReschedule(selectedIds)}>
+                  Remanejar selecionadas
+                </Button>
+                <Button variant="destructive" onClick={bulkDelete}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Excluir em lote
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lista de Entregas</CardTitle>
+          <CardDescription>
+            {visibleDeliveries.length} entregas encontradas. A ordenação considera a ordem manual e, depois, a data.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="w-10 py-3 px-4">
+                    <Checkbox
+                      checked={visibleDeliveries.length > 0 && selectedIds.length === visibleDeliveries.length}
+                      onCheckedChange={value => toggleSelectAll(Boolean(value))}
+                    />
+                  </th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Cliente</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Destino</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Status</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Agenda</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleDeliveries.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center text-muted-foreground">
+                      Nenhuma entrega encontrada
+                    </td>
+                  </tr>
+                ) : (
+                  visibleDeliveries.map((delivery: any) => <DeliveryRow key={delivery.id} delivery={delivery} />)
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remanejar entregas</DialogTitle>
+            <DialogDescription>
+              Reagende para o dia seguinte ou para a data desejada e escolha o motorista.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Motorista ativo</Label>
+              <Select value={rescheduleForm.driverId || "unassigned"} onValueChange={value => setRescheduleForm(prev => ({ ...prev, driverId: value === "unassigned" ? "" : value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um motorista ativo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Manter motorista atual</SelectItem>
+                  {rescheduleDriverOptions.map((driver: any) => (
+                    <SelectItem key={driver.id} value={String(driver.id)}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Nova data</Label>
+              <Input
+                type="datetime-local"
+                value={rescheduleForm.scheduledAt}
+                onChange={e => setRescheduleForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
+              />
+            </div>
+            <Button onClick={submitReschedule} className="w-full">
+              Confirmar remanejamento
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+</file>
+
 <file path="server/routers.ts">
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -21090,6 +20722,7 @@ export const appRouter = router({
         z.object({
           id: z.coerce.string(),
           status: z.enum(["pendente", "em_rota", "entregue", "cancelado"]).optional(),
+          clientName: z.string().optional(),
           driverId: z.coerce.string().optional(),
           notes: z.string().optional(),
           clientPhone: z.string().optional(),
@@ -21615,6 +21248,948 @@ export const appRouter = router({
 export type AppRouter = typeof appRouter;
 </file>
 
+<file path="client/src/pages/Routes.tsx">
+import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
+import { lookupCep } from "@/lib/cep";
+import { formatCep, formatPhone } from "@/lib/format";
+import { openGpsRoute } from "@/lib/navigation";
+import { trpc } from "@/lib/trpc";
+import { ArrowDown, ArrowUp, Edit2, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+
+type RoutePlanItem = any & {
+  routeOrder?: number | null;
+  distanceFromPreviousKm?: number | null;
+};
+
+type RoutePlans = Record<string, RoutePlanItem[]>;
+
+type RouteEditForm = {
+  clientName: string;
+  clientPhone: string;
+  baseId: string;
+  originPostalCode: string;
+  originAddress: string;
+  destinationPostalCode: string;
+  destinationAddress: string;
+  driverId: string;
+  notes: string;
+  scheduledAt: string;
+  status: "pendente" | "em_rota" | "entregue" | "cancelado";
+};
+
+const emptyEditForm: RouteEditForm = {
+  clientName: "",
+  clientPhone: "",
+  baseId: "",
+  originPostalCode: "",
+  originAddress: "",
+  destinationPostalCode: "",
+  destinationAddress: "",
+  driverId: "",
+  notes: "",
+  scheduledAt: "",
+  status: "pendente",
+};
+
+const STATUS_PRIORITY: Record<string, number> = {
+  em_rota: 0,
+  pendente: 1,
+  entregue: 2,
+  cancelado: 3,
+};
+
+const STATUS_BADGE_STYLES: Record<string, string> = {
+  pendente: "border-yellow-200 bg-yellow-50 text-yellow-800",
+  em_rota: "border-blue-200 bg-blue-50 text-blue-800",
+  entregue: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  cancelado: "border-rose-200 bg-rose-50 text-rose-800",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  pendente: "Pendente",
+  em_rota: "Em rota",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
+};
+
+function compareDeliveries(a: any, b: any) {
+  const statusDiff = (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99);
+  if (statusDiff !== 0) return statusDiff;
+
+  const routeOrderA = a.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  const routeOrderB = b.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  if (routeOrderA !== routeOrderB) return routeOrderA - routeOrderB;
+
+  const scheduledA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  const scheduledB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  if (scheduledA !== scheduledB) return scheduledA - scheduledB;
+
+  return String(a.clientName ?? "").localeCompare(String(b.clientName ?? ""));
+}
+
+function buildRoutePreview(plan: RoutePlanItem[] | undefined, deliveries: RoutePlanItem[]) {
+  if (!plan || plan.length === 0) {
+    return [...deliveries].sort(compareDeliveries);
+  }
+
+  const plannedIds = new Set(plan.map(item => item.id));
+  const remainder = deliveries.filter(item => !plannedIds.has(item.id)).sort(compareDeliveries);
+  return [...plan, ...remainder];
+}
+
+function formatDistanceKm(value: number | null | undefined) {
+  if (value == null) return "Distancia em revisao";
+  return `${Number(value).toFixed(2)} km da parada anterior`;
+}
+
+export default function Routes() {
+  const [selectedBaseId, setSelectedBaseId] = useState<string>("auto");
+  const [basePostalCode, setBasePostalCode] = useState("");
+  const [baseAddress, setBaseAddress] = useState("Rua Principal, 1 - Centro");
+  const [selectedDriverId, setSelectedDriverId] = useState<string>("all");
+  const [routePlans, setRoutePlans] = useState<RoutePlans>({});
+  const [activeDriverIds, setActiveDriverIds] = useState<string[]>([]);
+  const [loadingBase, setLoadingBase] = useState(false);
+  const [loadingEditCep, setLoadingEditCep] = useState<"origin" | "destination" | null>(null);
+  const [draggingStop, setDraggingStop] = useState<{ driverId: string; index: number } | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<RouteEditForm>(emptyEditForm);
+
+  const todayStart = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
+
+  const todayEnd = useMemo(() => {
+    const date = new Date();
+    date.setHours(23, 59, 59, 999);
+    return date;
+  }, []);
+
+  const { data: deliveries = [], refetch } = trpc.deliveries.list.useQuery({
+    startDate: todayStart,
+    endDate: todayEnd,
+  });
+  const { data: drivers = [] } = trpc.drivers.list.useQuery();
+  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: bases = [] } = trpc.operationalBases.list.useQuery();
+  const optimizeMutation = trpc.routes.optimize.useMutation();
+  const reorderMutation = trpc.deliveries.reorder.useMutation();
+  const updateMutation = trpc.deliveries.update.useMutation();
+
+  const selectedBase = useMemo(
+    () =>
+      selectedBaseId === "auto"
+        ? bases.find((base: any) => base.isPrimary) ?? bases[0]
+        : bases.find((base: any) => String(base.id) === selectedBaseId) ?? null,
+    [bases, selectedBaseId]
+  );
+
+  const openDeliveries = useMemo(
+    () => deliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"),
+    [deliveries]
+  );
+
+  const activeMotoristUserIds = useMemo(
+    () =>
+      new Set(
+        users
+          .filter((user: any) => user.role === "motorista" && user.status === "active")
+          .map((user: any) => user.id)
+      ),
+    [users]
+  );
+
+  const activeDrivers = useMemo(
+    () => drivers.filter((driver: any) => driver.userId && activeMotoristUserIds.has(driver.userId)),
+    [activeMotoristUserIds, drivers]
+  );
+
+  const selectedDriverOption = useMemo(
+    () => drivers.find((driver: any) => String(driver.id) === String(selectedDriverId)) ?? null,
+    [drivers, selectedDriverId]
+  );
+
+  const driverOptions = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const driver of activeDrivers) {
+      map.set(driver.id, driver);
+    }
+    if (selectedDriverOption && selectedDriverId !== "all") {
+      map.set(selectedDriverOption.id, selectedDriverOption);
+    }
+    return [...map.values()];
+  }, [activeDrivers, selectedDriverId, selectedDriverOption]);
+
+  const visibleDrivers = useMemo(() => {
+    const byDriver = new Map<string, RoutePlanItem[]>();
+    for (const delivery of deliveries) {
+      if (!delivery.driverId) continue;
+      const current = byDriver.get(delivery.driverId) ?? [];
+      current.push(delivery);
+      byDriver.set(delivery.driverId, current);
+    }
+
+    const result = driverOptions.filter((driver: any) => (selectedDriverId === "all" ? true : driver.id === selectedDriverId));
+
+    return result.map((driver: any) => {
+      const driverDeliveries = byDriver.get(driver.id) ?? [];
+      return {
+        driver,
+        deliveries: driverDeliveries,
+        previewDeliveries: buildRoutePreview(routePlans[driver.id], driverDeliveries),
+      };
+    });
+  }, [deliveries, driverOptions, routePlans, selectedDriverId]);
+
+  const fillBaseFromCep = async () => {
+    if (!basePostalCode) {
+      toast.error("Informe o CEP da base");
+      return;
+    }
+
+    setLoadingBase(true);
+    try {
+      const result = await lookupCep(basePostalCode);
+      setBasePostalCode(result.cep);
+      setBaseAddress(result.fullAddress);
+      toast.success("Base preenchida com sucesso");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Nao foi possivel consultar o CEP");
+    } finally {
+      setLoadingBase(false);
+    }
+  };
+
+  const syncBaseFromSelection = (base: any) => {
+    if (!base) return;
+    setBasePostalCode(base.postalCode || "");
+    setBaseAddress([base.street, base.number, base.neighborhood, base.city, base.state].filter(Boolean).join(", "));
+  };
+
+  const fillEditCep = async (type: "origin" | "destination") => {
+    const cep =
+      type === "origin" ? editForm.originPostalCode : editForm.destinationPostalCode;
+    if (!cep) {
+      toast.error("Informe um CEP");
+      return;
+    }
+
+    setLoadingEditCep(type);
+    try {
+      const result = await lookupCep(cep);
+      if (type === "origin") {
+        setEditForm(prev => ({
+          ...prev,
+          originPostalCode: result.cep,
+          originAddress: result.fullAddress,
+        }));
+      } else {
+        setEditForm(prev => ({
+          ...prev,
+          destinationPostalCode: result.cep,
+          destinationAddress: result.fullAddress,
+        }));
+      }
+      toast.success("CEP localizado com sucesso");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Erro ao consultar CEP");
+    } finally {
+      setLoadingEditCep(null);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedBase) {
+      syncBaseFromSelection(selectedBase);
+    }
+  }, [selectedBase]);
+
+  const generateRoute = async (driverId: string) => {
+    try {
+      const data = await optimizeMutation.mutateAsync({
+        driverId,
+        baseId: selectedBase?.id,
+        baseAddress: baseAddress || undefined,
+        scheduledAt: todayStart,
+      });
+
+      setRoutePlans(prev => ({
+        ...prev,
+        [driverId]: (data?.deliveries ?? []).map((delivery: any) => ({
+          ...delivery,
+          routeOrder: delivery.routeOrder,
+          distanceFromPreviousKm: delivery.distanceFromPreviousKm,
+        })),
+      }));
+
+      if (!activeDriverIds.includes(driverId)) {
+        setActiveDriverIds(prev => [...prev, driverId]);
+      }
+
+      toast.success("Rota gerada e pronta para revisao");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Nao foi possivel gerar a rota");
+    }
+  };
+
+  const moveStop = (driverId: string, index: number, direction: -1 | 1) => {
+    setRoutePlans(prev => {
+      const plan = [...(prev[driverId] ?? [])];
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= plan.length) return prev;
+      [plan[index], plan[targetIndex]] = [plan[targetIndex], plan[index]];
+      return {
+        ...prev,
+        [driverId]: plan.map((item, idx) => ({ ...item, routeOrder: idx + 1 })),
+      };
+    });
+  };
+
+  const reorderStop = (driverId: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    setRoutePlans(prev => {
+      const plan = [...(prev[driverId] ?? [])];
+      if (fromIndex < 0 || fromIndex >= plan.length || toIndex < 0 || toIndex >= plan.length) {
+        return prev;
+      }
+
+      const [moved] = plan.splice(fromIndex, 1);
+      plan.splice(toIndex, 0, moved);
+
+      return {
+        ...prev,
+        [driverId]: plan.map((item, idx) => ({ ...item, routeOrder: idx + 1 })),
+      };
+    });
+  };
+
+  const saveRoute = async (driverId: string) => {
+    const plan = routePlans[driverId] ?? [];
+    if (plan.length === 0) {
+      toast.error("Nao ha rota gerada para salvar");
+      return;
+    }
+
+    try {
+      await reorderMutation.mutateAsync({
+        driverId,
+        scheduledAt: todayStart,
+        order: plan.map((item, index) => ({
+          id: item.id,
+          routeOrder: index + 1,
+        })),
+      });
+
+      setActiveDriverIds(prev => (prev.includes(driverId) ? prev : [...prev, driverId]));
+      toast.success("Rota salva com sucesso");
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Nao foi possivel salvar a rota");
+    }
+  };
+
+  const resetRoute = (driverId: string) => {
+    setRoutePlans(prev => {
+      const next = { ...prev };
+      delete next[driverId];
+      return next;
+    });
+  };
+
+  const openDeliveryEditor = (deliveryId: string) => {
+    const delivery =
+      deliveries.find((item: any) => String(item.id) === String(deliveryId)) ??
+      routePlans[selectedDriverId]?.find((item: any) => String(item.id) === String(deliveryId)) ??
+      visibleDrivers.flatMap(entry => entry.previewDeliveries).find((item: any) => String(item.id) === String(deliveryId));
+
+    if (!delivery) {
+      toast.error("Entrega não encontrada");
+      return;
+    }
+
+    const resolvedDriverId = delivery.driverId ? String(delivery.driverId) : "";
+    setEditingDeliveryId(String(delivery.id));
+    setEditForm({
+      clientName: delivery.clientName ?? "",
+      clientPhone: delivery.clientPhone ?? "",
+      baseId: delivery.baseId ?? "",
+      originPostalCode: delivery.originPostalCode ?? "",
+      originAddress: delivery.originAddress ?? "",
+      destinationPostalCode: delivery.destinationPostalCode ?? "",
+      destinationAddress: delivery.destinationAddress ?? "",
+      driverId: resolvedDriverId,
+      notes: delivery.notes ?? "",
+      scheduledAt: delivery.scheduledAt ? toDateTimeLocalValue(delivery.scheduledAt) : "",
+      status: delivery.status ?? "pendente",
+    });
+    setEditOpen(true);
+  };
+
+  const saveEditedDelivery = async () => {
+    if (!editingDeliveryId) return;
+    if (!editForm.clientName || !editForm.clientPhone || !editForm.baseId || !editForm.originAddress || !editForm.destinationAddress) {
+      toast.error("Preencha os campos obrigatórios");
+      return;
+    }
+
+    try {
+      await updateMutation.mutateAsync({
+        id: editingDeliveryId,
+        clientName: editForm.clientName,
+        clientPhone: editForm.clientPhone || undefined,
+        baseId: editForm.baseId || undefined,
+        originPostalCode: editForm.originPostalCode || undefined,
+        originAddress: editForm.originAddress,
+        destinationPostalCode: editForm.destinationPostalCode || undefined,
+        destinationAddress: editForm.destinationAddress,
+        driverId: editForm.driverId || undefined,
+        scheduledAt: editForm.scheduledAt ? new Date(editForm.scheduledAt) : undefined,
+        notes: editForm.notes || undefined,
+        status: editForm.status,
+      });
+      toast.success("Entrega atualizada");
+      setRoutePlans(prev => ({
+        ...prev,
+        ...(editForm.driverId
+          ? {
+              [editForm.driverId]: (prev[editForm.driverId] ?? []).map(item =>
+                String(item.id) === String(editingDeliveryId)
+                  ? {
+                      ...item,
+                      clientName: editForm.clientName,
+                      clientPhone: editForm.clientPhone,
+                      baseId: editForm.baseId || null,
+                      originPostalCode: editForm.originPostalCode || null,
+                      originAddress: editForm.originAddress,
+                      destinationPostalCode: editForm.destinationPostalCode || null,
+                      destinationAddress: editForm.destinationAddress,
+                      notes: editForm.notes || null,
+                      scheduledAt: editForm.scheduledAt,
+                      status: editForm.status,
+                    }
+                  : item
+              ),
+            }
+          : {}),
+      }));
+      setEditOpen(false);
+      setEditingDeliveryId(null);
+      refetch();
+    } catch {
+      toast.error("Não foi possível atualizar a entrega");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">Roteirizacao</h1>
+        <p className="mt-1 text-muted-foreground">
+          Revisao de rotas automaticas, ordenacao manual, arrastar e soltar e base por CEP.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Base operacional</CardTitle>
+          <CardDescription>Escolha a base principal do dia ou ajuste manualmente a origem da rota.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-[1fr,2fr,auto]">
+          <div className="space-y-2 md:col-span-3">
+            <Label>Base do dia</Label>
+            <Select
+              value={selectedBaseId}
+              onValueChange={value => {
+                setSelectedBaseId(value);
+                if (value === "auto") {
+                  const primary = bases.find((base: any) => base.isPrimary) ?? bases[0];
+                  if (primary) syncBaseFromSelection(primary);
+                  return;
+                }
+                const base = bases.find((entry: any) => String(entry.id) === value);
+                syncBaseFromSelection(base);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Escolha a base principal" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Base principal automatica</SelectItem>
+                {bases.map((base: any) => (
+                  <SelectItem key={base.id} value={String(base.id)}>
+                    {base.name}
+                    {base.isPrimary ? " (principal)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedBase ? (
+              <p className="text-xs text-muted-foreground">
+                {selectedBase.street}, {selectedBase.number || "-"} - {selectedBase.city}/{selectedBase.state}
+              </p>
+            ) : null}
+          </div>
+          <div className="space-y-2">
+            <Label>CEP da base</Label>
+            <Input
+              placeholder="00000-000"
+              value={basePostalCode}
+              onChange={e => setBasePostalCode(formatCep(e.target.value))}
+              inputMode="numeric"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Endereco base</Label>
+            <Input value={baseAddress} onChange={e => setBaseAddress(e.target.value)} />
+          </div>
+          <div className="flex items-end">
+            <Button variant="outline" onClick={fillBaseFromCep} disabled={loadingBase}>
+              <Search className="mr-2 h-4 w-4" />
+              Consultar CEP
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid gap-4 lg:grid-cols-4">
+            <div className="space-y-2 lg:col-span-2">
+              <Label>Motorista ativo</Label>
+              <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos os motoristas ativos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os motoristas ativos</SelectItem>
+                  {driverOptions.map((driver: any) => (
+                    <SelectItem key={driver.id} value={String(driver.id)}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editForm.baseId ? (
+                <p className="text-xs text-muted-foreground">
+                  {(() => {
+                    const base = bases.find((entry: any) => String(entry.id) === String(editForm.baseId));
+                    if (!base) return "";
+                    return `${base.street}, ${base.number || "-"} - ${base.city}/${base.state}`;
+                  })()}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setRoutePlans({});
+                  setActiveDriverIds([]);
+                  setDraggingStop(null);
+                }}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Limpar revisoes
+              </Button>
+            </div>
+            <div className="flex items-end">
+              <Button variant="outline" className="w-full" onClick={() => refetch()}>
+                Atualizar base
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Entregas em aberto</p>
+            <p className="text-2xl font-semibold">{openDeliveries.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Motoristas ativos com rota</p>
+            <p className="text-2xl font-semibold">{visibleDrivers.filter(entry => entry.deliveries.length > 0).length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Rotas revisadas</p>
+            <p className="text-2xl font-semibold">{activeDriverIds.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Base</p>
+            <p className="text-sm font-medium truncate">{baseAddress}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Accordion type="multiple" className="space-y-4">
+        {visibleDrivers.map(({ driver, deliveries: driverDeliveries, previewDeliveries }: any) => {
+          const currentPlan = previewDeliveries;
+          const hasPlan = Boolean(routePlans[driver.id]);
+          const plannedCount = routePlans[driver.id]?.length ?? 0;
+          const openDriverDeliveries = driverDeliveries.filter(
+            (delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"
+          );
+
+          return (
+            <AccordionItem key={driver.id} value={driver.id} className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+              <AccordionTrigger className="px-6 py-5 hover:no-underline">
+                <div className="flex w-full flex-wrap items-center justify-between gap-4 text-left">
+                  <div>
+                    <CardTitle>{driver.name}</CardTitle>
+                    <CardDescription>{driverDeliveries.length} entregas na rota de hoje</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span>{currentPlan.length} paradas</span>
+                    <span>{hasPlan ? "Rota revisada" : "Rota pendente"}</span>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6">
+                <div className="mb-4 flex flex-wrap justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => generateRoute(driver.id)}
+                    disabled={openDriverDeliveries.length === 0}
+                  >
+                    <Navigation className="mr-2 h-4 w-4" />
+                    Gerar rota automatica
+                  </Button>
+                  <Button variant="default" onClick={() => saveRoute(driver.id)} disabled={!hasPlan}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Salvar revisao
+                  </Button>
+                  <Button variant="ghost" onClick={() => resetRoute(driver.id)} disabled={!hasPlan}>
+                    Limpar
+                  </Button>
+                </div>
+
+                {currentPlan.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+                    Nenhuma entrega atribuida para este motorista hoje.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {currentPlan.map((delivery: any, index: number) => {
+                      const isDragging = draggingStop?.driverId === driver.id && draggingStop.index === index;
+                      const isEditableStop = hasPlan && index < plannedCount;
+
+                      return (
+                        <div
+                          key={delivery.id}
+                          className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${
+                            isDragging ? "border-primary bg-primary/5" : "bg-background"
+                          } ${hasPlan && !isEditableStop ? "opacity-75" : ""}`}
+                          draggable={isEditableStop}
+                          onDragStart={() => {
+                            if (!isEditableStop) return;
+                            setDraggingStop({ driverId: driver.id, index });
+                          }}
+                          onDragEnd={() => setDraggingStop(null)}
+                          onDragOver={event => {
+                            if (!isEditableStop) return;
+                            event.preventDefault();
+                          }}
+                          onDrop={() => {
+                            if (!isEditableStop) return;
+                            if (!draggingStop || draggingStop.driverId !== driver.id) return;
+                            reorderStop(driver.id, draggingStop.index, index);
+                            setDraggingStop(null);
+                          }}
+                        >
+                          <div className="flex flex-col items-center gap-2 pt-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveStop(driver.id, index, -1)}
+                              disabled={index === 0 || !isEditableStop}
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </Button>
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                              {delivery.routeOrder ?? index + 1}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveStop(driver.id, index, 1)}
+                              disabled={index === plannedCount - 1 || !isEditableStop}
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2 font-semibold">
+                                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                  <span>{delivery.clientName}</span>
+                                  <Badge variant="outline" className={STATUS_BADGE_STYLES[delivery.status] ?? ""}>
+                                    {STATUS_LABELS[delivery.status] ?? delivery.status}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                  <MapPin className="h-4 w-4" />
+                                  {delivery.destinationAddress}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {delivery.destinationPostalCode || "Sem CEP"} {" - "} Ordem {delivery.routeOrder ?? index + 1}
+                                </div>
+                              </div>
+                              <div className="text-right text-xs text-muted-foreground">
+                                <div className="mb-2 flex justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="gap-2"
+                                    onClick={() => openDeliveryEditor(delivery.id)}
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                    Editar
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="mb-2"
+                                    onClick={() => openGpsRoute(delivery.destinationAddress)}
+                                  >
+                                    Abrir GPS
+                                  </Button>
+                                </div>
+                                <div>{formatDateTime(delivery.scheduledAt)}</div>
+                                <div>{formatDistanceKm(delivery.distanceFromPreviousKm)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
+      </Accordion>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Entrega</DialogTitle>
+            <DialogDescription>
+              Informe os dados da coleta e da entrega. O CEP pode preencher o endereço automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label>Cliente *</Label>
+              <Input
+                value={editForm.clientName}
+                onChange={e => setEditForm(prev => ({ ...prev, clientName: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Telefone do cliente *</Label>
+              <Input
+                value={editForm.clientPhone}
+                onChange={e =>
+                  setEditForm(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Base operacional *</Label>
+              <Select
+                value={editForm.baseId || "unassigned"}
+                onValueChange={value =>
+                  setEditForm(prev => ({
+                    ...prev,
+                    baseId: value === "unassigned" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a base" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Base principal automática</SelectItem>
+                  {bases.map((base: any) => (
+                    <SelectItem key={base.id} value={String(base.id)}>
+                      {base.name}
+                      {base.isPrimary ? " (principal)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>CEP de origem</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="00000-000"
+                  value={editForm.originPostalCode}
+                  onChange={e =>
+                    setEditForm(prev => ({ ...prev, originPostalCode: formatCep(e.target.value) }))
+                  }
+                  inputMode="numeric"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fillEditCep("origin")}
+                  disabled={loadingEditCep === "origin"}
+                >
+                  Consultar
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>CEP de destino</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="00000-000"
+                  value={editForm.destinationPostalCode}
+                  onChange={e =>
+                    setEditForm(prev => ({
+                      ...prev,
+                      destinationPostalCode: formatCep(e.target.value),
+                    }))
+                  }
+                  inputMode="numeric"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fillEditCep("destination")}
+                  disabled={loadingEditCep === "destination"}
+                >
+                  Consultar
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Endereço de origem *</Label>
+              <Input
+                value={editForm.originAddress}
+                onChange={e => setEditForm(prev => ({ ...prev, originAddress: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Endereço de destino *</Label>
+              <Input
+                value={editForm.destinationAddress}
+                onChange={e =>
+                  setEditForm(prev => ({ ...prev, destinationAddress: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Motorista ativo</Label>
+              <Select
+                value={editForm.driverId || "unassigned"}
+                onValueChange={value =>
+                  setEditForm(prev => ({
+                    ...prev,
+                    driverId: value === "unassigned" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um motorista ativo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Sem motorista</SelectItem>
+                  {driverOptions.map((driver: any) => (
+                    <SelectItem key={driver.id} value={String(driver.id)}>
+                      {driver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Data/Hora Agendada</Label>
+              <Input
+                type="datetime-local"
+                value={editForm.scheduledAt}
+                onChange={e => setEditForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status da entrega</Label>
+              <Select
+                value={editForm.status}
+                onValueChange={value =>
+                  setEditForm(prev => ({
+                    ...prev,
+                    status: value as RouteEditForm["status"],
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["pendente", "em_rota", "entregue", "cancelado"] as const).map(status => (
+                    <SelectItem key={status} value={status}>
+                      {STATUS_LABELS[status]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label>Observações</Label>
+              <Textarea
+                value={editForm.notes}
+                onChange={e => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+              />
+            </div>
+
+            <Button onClick={saveEditedDelivery} className="md:col-span-2">
+              Salvar alterações
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+</file>
+
 <file path="server/db.ts">
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -21959,7 +22534,9 @@ async function ensureDriverProfileForUser(user: User, accessToken?: string | nul
     return null;
   }
 
-  const db = clientFor(accessToken);
+  // This is an internal sync path owned by the server.
+  // Using the admin client avoids RLS blocking a valid motorista profile refresh.
+  const db = createSupabaseAdminClient();
   const { data: existingByUserId, error: existingByUserIdError } = await db
     .from("drivers")
     .select("*")
@@ -22679,7 +23256,8 @@ export async function updateDeliveryStatus(
   },
   accessToken?: string | null
 ) {
-  const db = clientFor(accessToken);
+  // Server-owned write path. Use admin client so motorista actions are not blocked by RLS.
+  const db = createSupabaseAdminClient();
   const { data: currentDelivery, error: deliveryError } = await db
     .from("deliveries")
     .select("*")
@@ -22718,8 +23296,7 @@ export async function updateDeliveryStatus(
         previousStatus: currentDelivery.status,
       }) as Record<string, unknown>,
       recordedAt: input.recordedAt ?? new Date(),
-    },
-    accessToken
+    }
   );
 
   return {
