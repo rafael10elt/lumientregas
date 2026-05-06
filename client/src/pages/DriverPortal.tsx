@@ -21,7 +21,6 @@ import {
   MessageCircleMore,
   Navigation,
   Package2,
-  Route,
   Truck,
 } from "lucide-react";
 import { useState } from "react";
@@ -69,6 +68,12 @@ function compareDeliveries(a: any, b: any) {
   if (scheduledA !== scheduledB) return scheduledA - scheduledB;
 
   return String(a.clientName ?? "").localeCompare(String(b.clientName ?? ""));
+}
+
+function getAllowedDriverStatuses(status: string) {
+  if (status === "pendente") return ["em_rota", "cancelado"];
+  if (status === "em_rota") return ["entregue", "cancelado"];
+  return [];
 }
 
 function DriverDeliveryCard({
@@ -130,18 +135,22 @@ function DriverDeliveryCard({
 
           <div className="flex flex-col gap-2 md:min-w-[240px]">
             <div className="grid grid-cols-2 gap-2">
-              {DELIVERY_STATUSES.map(status => (
-                <Button
-                  key={status.value}
-                  size="sm"
-                  variant={delivery.status === status.value ? "default" : "outline"}
-                  className="justify-start"
-                  disabled={isLocked}
-                  onClick={() => onStatusChange(delivery.id, status.value)}
-                >
-                  {status.label}
-                </Button>
-              ))}
+              {getAllowedDriverStatuses(delivery.status).map(statusValue => {
+                const status = DELIVERY_STATUSES.find(item => item.value === statusValue);
+                if (!status) return null;
+
+                return (
+                  <Button
+                    key={status.value}
+                    size="sm"
+                    variant="outline"
+                    className="justify-start"
+                    onClick={() => onStatusChange(delivery.id, status.value)}
+                  >
+                    {status.label}
+                  </Button>
+                );
+              })}
             </div>
             <Button
               variant="outline"
@@ -155,15 +164,6 @@ function DriverDeliveryCard({
               <Button variant="outline" className="gap-2" onClick={() => openGpsRoute(delivery.destinationAddress)}>
                 <Navigation className="h-4 w-4" />
                 GPS
-              </Button>
-              <Button
-                variant="outline"
-                className="gap-2"
-                disabled={isLocked}
-                onClick={() => onStatusChange(delivery.id, delivery.status)}
-              >
-                <Route className="h-4 w-4" />
-                Registrar
               </Button>
             </div>
           </div>

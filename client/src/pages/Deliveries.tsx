@@ -24,6 +24,7 @@ import {
   Plus,
   Search,
   ShieldAlert,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -44,6 +45,28 @@ const STATUS_COLORS: Record<string, string> = {
   cancelado: "bg-red-100 text-red-800",
 };
 
+const STATUS_PRIORITY: Record<string, number> = {
+  em_rota: 0,
+  pendente: 1,
+  entregue: 2,
+  cancelado: 3,
+};
+
+function compareDeliveries(a: any, b: any) {
+  const statusDiff = (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99);
+  if (statusDiff !== 0) return statusDiff;
+
+  const routeOrderA = a.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  const routeOrderB = b.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  if (routeOrderA !== routeOrderB) return routeOrderA - routeOrderB;
+
+  const scheduledA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  const scheduledB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  if (scheduledA !== scheduledB) return scheduledA - scheduledB;
+
+  return String(a.clientName ?? "").localeCompare(String(b.clientName ?? ""));
+}
+
 type DeliveryForm = {
   clientName: string;
   clientPhone: string;
@@ -55,6 +78,7 @@ type DeliveryForm = {
   driverId: string;
   notes: string;
   scheduledAt: string;
+  status: "pendente" | "em_rota" | "entregue" | "cancelado";
 };
 
 type RescheduleForm = {
@@ -73,6 +97,7 @@ const emptyForm: DeliveryForm = {
   driverId: "",
   notes: "",
   scheduledAt: "",
+  status: "pendente",
 };
 
 export default function Deliveries() {
@@ -130,11 +155,7 @@ export default function Deliveries() {
         .includes(searchTerm.toLowerCase())
     );
 
-    return [...filtered].sort((a: any, b: any) => {
-      const aKey = Number.isFinite(a.routeOrder) ? a.routeOrder : a.scheduledAt || "";
-      const bKey = Number.isFinite(b.routeOrder) ? b.routeOrder : b.scheduledAt || "";
-      return String(aKey).localeCompare(String(bKey));
-    });
+    return [...filtered].sort(compareDeliveries);
   }, [deliveries, searchTerm]);
 
   const activeDriverIds = useMemo(
@@ -200,7 +221,6 @@ export default function Deliveries() {
     return [...map.values()];
   }, [activeDrivers, selectedFilterDriver]);
 
-  const selectedDeliveries = visibleDeliveries.filter((delivery: any) => selectedIds.includes(delivery.id));
   const openDeliveries = visibleDeliveries.filter((delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado");
   const deliveriesInProgress = visibleDeliveries.filter((delivery: any) => delivery.status === "em_rota");
 
@@ -223,6 +243,7 @@ export default function Deliveries() {
       driverId: delivery.driverId ? String(delivery.driverId) : "",
       notes: delivery.notes ?? "",
       scheduledAt: toDateTimeLocalValue(delivery.scheduledAt),
+      status: delivery.status ?? "pendente",
     });
     setOpen(true);
   };
@@ -281,6 +302,7 @@ export default function Deliveries() {
         driverId: formData.driverId || undefined,
         scheduledAt: formData.scheduledAt ? new Date(formData.scheduledAt) : undefined,
         notes: formData.notes || undefined,
+        ...(editingId ? { status: formData.status } : {}),
       };
 
       if (editingId) {
@@ -331,6 +353,16 @@ export default function Deliveries() {
     } catch {
       toast.error("Não foi possível excluir a entrega");
     }
+  };
+
+  const resetFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("all");
+    setDriverFilter("all");
+    setStartDate("");
+    setEndDate("");
+    setSelectedIds([]);
+    setExpandedIds([]);
   };
 
   const bulkDelete = async () => {
@@ -867,6 +899,12 @@ export default function Deliveries() {
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex items-end lg:col-span-5">
+              <Button variant="outline" onClick={resetFilters} className="ml-auto gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Limpar filtros
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -20,6 +20,38 @@ type RoutePlanItem = any & {
 
 type RoutePlans = Record<string, RoutePlanItem[]>;
 
+const STATUS_PRIORITY: Record<string, number> = {
+  em_rota: 0,
+  pendente: 1,
+  entregue: 2,
+  cancelado: 3,
+};
+
+function compareDeliveries(a: any, b: any) {
+  const statusDiff = (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99);
+  if (statusDiff !== 0) return statusDiff;
+
+  const routeOrderA = a.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  const routeOrderB = b.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  if (routeOrderA !== routeOrderB) return routeOrderA - routeOrderB;
+
+  const scheduledA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  const scheduledB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+  if (scheduledA !== scheduledB) return scheduledA - scheduledB;
+
+  return String(a.clientName ?? "").localeCompare(String(b.clientName ?? ""));
+}
+
+function buildRoutePreview(plan: RoutePlanItem[] | undefined, deliveries: RoutePlanItem[]) {
+  if (!plan || plan.length === 0) {
+    return [...deliveries].sort(compareDeliveries);
+  }
+
+  const plannedIds = new Set(plan.map(item => item.id));
+  const remainder = deliveries.filter(item => !plannedIds.has(item.id)).sort(compareDeliveries);
+  return [...plan, ...remainder];
+}
+
 export default function Routes() {
   const [selectedBaseId, setSelectedBaseId] = useState<string>("auto");
   const [basePostalCode, setBasePostalCode] = useState("");
@@ -98,7 +130,7 @@ export default function Routes() {
 
   const visibleDrivers = useMemo(() => {
     const byDriver = new Map<string, RoutePlanItem[]>();
-    for (const delivery of openDeliveries) {
+    for (const delivery of deliveries) {
       if (!delivery.driverId) continue;
       const current = byDriver.get(delivery.driverId) ?? [];
       current.push(delivery);
@@ -107,11 +139,15 @@ export default function Routes() {
 
     const result = driverOptions.filter((driver: any) => (selectedDriverId === "all" ? true : driver.id === selectedDriverId));
 
-    return result.map((driver: any) => ({
-      driver,
-      deliveries: byDriver.get(driver.id) ?? [],
-    }));
-  }, [driverOptions, openDeliveries, selectedDriverId]);
+    return result.map((driver: any) => {
+      const driverDeliveries = byDriver.get(driver.id) ?? [];
+      return {
+        driver,
+        deliveries: driverDeliveries,
+        previewDeliveries: buildRoutePreview(routePlans[driver.id], driverDeliveries),
+      };
+    });
+  }, [deliveries, driverOptions, routePlans, selectedDriverId]);
 
   const fillBaseFromCep = async () => {
     if (!basePostalCode) {
@@ -378,9 +414,12 @@ export default function Routes() {
       </div>
 
       <Accordion type="multiple" className="space-y-4">
-        {visibleDrivers.map(({ driver, deliveries: driverDeliveries }: any) => {
-          const currentPlan = routePlans[driver.id] ?? driverDeliveries;
+        {visibleDrivers.map(({ driver, deliveries: driverDeliveries, previewDeliveries }: any) => {
+          const currentPlan = previewDeliveries;
           const hasPlan = Boolean(routePlans[driver.id]);
+          const openDriverDeliveries = driverDeliveries.filter(
+            (delivery: any) => delivery.status !== "entregue" && delivery.status !== "cancelado"
+          );
 
           return (
             <AccordionItem key={driver.id} value={driver.id} className="overflow-hidden rounded-2xl border bg-background shadow-sm">
@@ -388,7 +427,7 @@ export default function Routes() {
                 <div className="flex w-full flex-wrap items-center justify-between gap-4 text-left">
                   <div>
                     <CardTitle>{driver.name}</CardTitle>
-                    <CardDescription>{driverDeliveries.length} entregas em aberto para hoje</CardDescription>
+                    <CardDescription>{driverDeliveries.length} entregas na rota de hoje</CardDescription>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <span>{currentPlan.length} paradas</span>
@@ -398,7 +437,11 @@ export default function Routes() {
               </AccordionTrigger>
               <AccordionContent className="px-6 pb-6">
                 <div className="mb-4 flex flex-wrap justify-end gap-2">
-                  <Button variant="outline" onClick={() => generateRoute(driver.id)} disabled={driverDeliveries.length === 0}>
+                  <Button
+                    variant="outline"
+                    onClick={() => generateRoute(driver.id)}
+                    disabled={openDriverDeliveries.length === 0}
+                  >
                     <Navigation className="mr-2 h-4 w-4" />
                     Gerar rota automatica
                   </Button>
@@ -419,18 +462,26 @@ export default function Routes() {
                   <div className="space-y-3">
                     {currentPlan.map((delivery: any, index: number) => {
                       const isDragging = draggingStop?.driverId === driver.id && draggingStop.index === index;
+                      const isEditableStop = hasPlan && index < plannedCount;
 
                       return (
                         <div
                           key={delivery.id}
                           className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${
                             isDragging ? "border-primary bg-primary/5" : "bg-background"
-                          }`}
-                          draggable={hasPlan}
-                          onDragStart={() => setDraggingStop({ driverId: driver.id, index })}
+                          } ${hasPlan && !isEditableStop ? "opacity-75" : ""}`}
+                          draggable={isEditableStop}
+                          onDragStart={() => {
+                            if (!isEditableStop) return;
+                            setDraggingStop({ driverId: driver.id, index });
+                          }}
                           onDragEnd={() => setDraggingStop(null)}
-                          onDragOver={event => event.preventDefault()}
+                          onDragOver={event => {
+                            if (!isEditableStop) return;
+                            event.preventDefault();
+                          }}
                           onDrop={() => {
+                            if (!isEditableStop) return;
                             if (!draggingStop || draggingStop.driverId !== driver.id) return;
                             reorderStop(driver.id, draggingStop.index, index);
                             setDraggingStop(null);
@@ -441,7 +492,7 @@ export default function Routes() {
                               variant="ghost"
                               size="icon"
                               onClick={() => moveStop(driver.id, index, -1)}
-                              disabled={index === 0 || !hasPlan}
+                              disabled={index === 0 || !isEditableStop}
                             >
                               <ArrowUp className="h-4 w-4" />
                             </Button>
@@ -452,7 +503,7 @@ export default function Routes() {
                               variant="ghost"
                               size="icon"
                               onClick={() => moveStop(driver.id, index, 1)}
-                              disabled={index === currentPlan.length - 1 || !hasPlan}
+                              disabled={index === plannedCount - 1 || !isEditableStop}
                             >
                               <ArrowDown className="h-4 w-4" />
                             </Button>
