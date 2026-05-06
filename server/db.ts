@@ -1063,7 +1063,8 @@ export async function updateDeliveryStatus(
   },
   accessToken?: string | null
 ) {
-  const db = clientFor(accessToken);
+  // Server-owned write path. Use admin client so motorista actions are not blocked by RLS.
+  const db = createSupabaseAdminClient();
   const { data: currentDelivery, error: deliveryError } = await db
     .from("deliveries")
     .select("*")
@@ -1102,8 +1103,7 @@ export async function updateDeliveryStatus(
         previousStatus: currentDelivery.status,
       }) as Record<string, unknown>,
       recordedAt: input.recordedAt ?? new Date(),
-    },
-    accessToken
+    }
   );
 
   return {
