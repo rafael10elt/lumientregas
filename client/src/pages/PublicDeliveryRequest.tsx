@@ -280,7 +280,7 @@ export default function PublicDeliveryRequest({ tenantSlug }: PublicDeliveryRequ
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="text-xs uppercase tracking-wide text-slate-400">Rastrear entrega</div>
               <div className="mt-2 text-sm text-slate-300">
-                Use o código de entrega para acompanhar o status sem expor dados internos.
+                Use o código de entrega para acompanhar o status.
               </div>
             </div>
           </CardContent>
@@ -382,7 +382,7 @@ export default function PublicDeliveryRequest({ tenantSlug }: PublicDeliveryRequ
               <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4">
                 <div className="flex items-center gap-3 text-sm text-slate-600">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  A solicitação será criada com status pendente e enviada ao fluxo do n8n.
+                  A solicitação será criada com status pendente, aguardando a aprovação.
                 </div>
                 <Button onClick={submitRequest} disabled={statusIsBlocked || submitMutation.isPending} className="gap-2">
                   {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -428,12 +428,12 @@ export default function PublicDeliveryRequest({ tenantSlug }: PublicDeliveryRequ
               <CardHeader>
                 <CardTitle className="text-white">Rastrear por código</CardTitle>
                 <CardDescription className="text-slate-300">
-                  Informe o código para ver apenas as informações básicas da entrega.
+                  Informe o código para ver apenas as informações da entrega.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="space-y-2">
-                  <Label className="text-slate-200">Código de entrega</Label>
+                  <Label className="text-slate-200">Código de rastreio</Label>
                   <Input
                     placeholder="DEL-ABC123"
                     value={trackingInput}
@@ -443,7 +443,7 @@ export default function PublicDeliveryRequest({ tenantSlug }: PublicDeliveryRequ
                 </div>
                 <Button onClick={openTracking} className="w-full gap-2">
                   <Search className="h-4 w-4" />
-                  Consultar entrega
+                  Consultar Entrega
                 </Button>
               </CardContent>
             </Card>
@@ -454,9 +454,9 @@ export default function PublicDeliveryRequest({ tenantSlug }: PublicDeliveryRequ
       <Dialog open={trackingOpen} onOpenChange={setTrackingOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Consulta pública da entrega</DialogTitle>
+            <DialogTitle>Rastreio da entrega</DialogTitle>
             <DialogDescription>
-              Exibimos somente os dados essenciais para o cliente acompanhar.
+              
             </DialogDescription>
           </DialogHeader>
 
