@@ -17,6 +17,7 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import DriverPortal from "./pages/DriverPortal";
 import Tenants from "./pages/Tenants";
+import DashboardReport from "./pages/DashboardReport";
 import PublicDeliveryRequest from "./pages/PublicDeliveryRequest";
 import NotFound from "@/pages/NotFound";
 import { Loader2, ShieldAlert } from "lucide-react";
@@ -149,6 +150,10 @@ function Router() {
         onLogout={logout}
       />
     );
+  }
+
+  if (location === "/dashboard/report") {
+    return <DashboardReport />;
   }
 
   return (
