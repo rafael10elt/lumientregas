@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { generateDashboardReportPdf } from "@/lib/dashboardPdf";
 import {
   Bar,
   BarChart,
@@ -43,6 +44,7 @@ const presetButtons: Array<{ key: DashboardFilters["preset"]; label: string }> =
 
 export default function Dashboard() {
   const [filters, setFilters] = useState<DashboardFilters>(() => normalizeDashboardFilters());
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
 
   const queryInput = useMemo(() => {
@@ -82,17 +84,19 @@ export default function Dashboard() {
     }));
   };
 
-  const openPdfReport = () => {
-    const params = new URLSearchParams({
-      preset: filters.preset,
-      startDate: filters.startDate,
-      endDate: filters.endDate,
-      status: filters.status,
-      driverId: filters.driverId,
-      autoprint: "1",
-    });
+  const exportPdfReport = async () => {
+    if (isGeneratingPdf) return;
 
-    window.open(`/dashboard/report?${params.toString()}`, "_blank", "noopener,noreferrer");
+    setIsGeneratingPdf(true);
+    try {
+      await generateDashboardReportPdf({
+        deliveries,
+        drivers,
+        filters,
+      });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   return (
@@ -115,9 +119,9 @@ export default function Dashboard() {
               <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
               Atualizar dados
             </Button>
-            <Button onClick={openPdfReport} className="gap-2">
-              <Download className="h-4 w-4" />
-              Relatório PDF
+            <Button onClick={exportPdfReport} className="gap-2" disabled={isGeneratingPdf}>
+              <Download className={`h-4 w-4 ${isGeneratingPdf ? "animate-pulse" : ""}`} />
+              {isGeneratingPdf ? "Gerando PDF..." : "Baixar relatório PDF"}
             </Button>
           </div>
         </div>
