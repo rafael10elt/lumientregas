@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/components/ConfirmProvider";
+import { useAuth } from "../_core/hooks/useAuth";
 import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import { formatCep, formatPhone } from "@/lib/format";
 import { openWhatsApp, openGpsRoute } from "@/lib/navigation";
@@ -20,6 +21,7 @@ import {
   MessageCircleMore,
   MapPin,
   Navigation,
+  Copy,
   Pencil,
   Plus,
   Search,
@@ -101,6 +103,7 @@ const emptyForm: DeliveryForm = {
 };
 
 export default function Deliveries() {
+  const { tenant } = useAuth();
   const { confirm } = useConfirm();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -149,6 +152,24 @@ export default function Deliveries() {
   const deleteMutation = trpc.deliveries.delete.useMutation();
   const bulkDeleteMutation = trpc.deliveries.bulkDelete.useMutation();
   const bulkRescheduleMutation = trpc.deliveries.bulkReschedule.useMutation();
+  const publicDeliveryUrl = useMemo(() => {
+    if (typeof window === "undefined" || !tenant?.slug) return "";
+    return `${window.location.origin}/solicitar/${tenant.slug}`;
+  }, [tenant?.slug]);
+
+  const copyPublicUrl = async () => {
+    if (!publicDeliveryUrl) {
+      toast.error("Nao foi possivel montar a URL publica");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(publicDeliveryUrl);
+      toast.success("URL publica copiada");
+    } catch {
+      toast.error("Nao foi possivel copiar a URL");
+    }
+  };
 
   const visibleDeliveries = useMemo(() => {
     const filtered = deliveries.filter((d: any) =>
@@ -673,12 +694,18 @@ export default function Deliveries() {
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={openCreate}>
-              <Plus className="w-4 h-4" />
-              Nova Entrega
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="gap-2" onClick={copyPublicUrl} disabled={!publicDeliveryUrl}>
+              <Copy className="w-4 h-4" />
+              Copiar URL pública
             </Button>
-          </DialogTrigger>
+            <DialogTrigger asChild>
+              <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={openCreate}>
+                <Plus className="w-4 h-4" />
+                Nova Entrega
+              </Button>
+            </DialogTrigger>
+          </div>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingId ? "Editar Entrega" : "Criar Nova Entrega"}</DialogTitle>
