@@ -235,6 +235,7 @@ export type InsertOperationalBase = {
 
 export type Delivery = {
   id: string;
+  deliveryCode: string;
   clientId: string | null;
   baseId: string | null;
   clientName: string;
@@ -291,6 +292,7 @@ export type DeliveryEvent = {
 
 export type InsertDelivery = {
   tenantId?: string;
+  deliveryCode?: string | null;
   clientId?: string | null;
   baseId?: string | null;
   clientName: string;

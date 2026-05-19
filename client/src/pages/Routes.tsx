@@ -706,6 +706,9 @@ export default function Routes() {
                                   <Badge variant="outline" className={STATUS_BADGE_STYLES[delivery.status] ?? ""}>
                                     {STATUS_LABELS[delivery.status] ?? delivery.status}
                                   </Badge>
+                                  <Badge variant="secondary" className="font-mono text-[11px]">
+                                    {delivery.deliveryCode || "Sem código"}
+                                  </Badge>
                                 </div>
                                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
                                   <MapPin className="h-4 w-4" />

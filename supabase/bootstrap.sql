@@ -207,6 +207,7 @@ create table public.deliveries (
   "tenantId" uuid not null references public.tenants (id) on delete cascade,
   "clientId" uuid references public.clients (id) on delete set null,
   "baseId" uuid references public.operational_bases (id) on delete set null,
+  "deliveryCode" text not null unique,
   "clientName" text not null,
   "clientPhone" text,
   "originPostalCode" text,
@@ -242,6 +243,12 @@ create table public.deliveries (
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now()
 );
+
+alter table public.deliveries add column if not exists "deliveryCode" text;
+update public.deliveries
+set "deliveryCode" = upper('DEL-' || substring(replace(gen_random_uuid()::text, '-', '') from 1 for 6))
+where "deliveryCode" is null;
+alter table public.deliveries alter column "deliveryCode" set not null;
 
 create table public.delivery_events (
   id uuid primary key default gen_random_uuid(),
@@ -451,6 +458,7 @@ create index if not exists operational_bases_tenant_id_idx on public.operational
 create index if not exists operational_bases_primary_idx on public.operational_bases ("tenantId", "isPrimary");
 create unique index if not exists operational_bases_single_primary_idx on public.operational_bases ("tenantId") where "isPrimary";
 create index if not exists deliveries_tenant_id_idx on public.deliveries ("tenantId");
+create index if not exists deliveries_delivery_code_idx on public.deliveries ("deliveryCode");
 create index if not exists deliveries_status_idx on public.deliveries (status);
 create index if not exists deliveries_driver_id_idx on public.deliveries ("driverId");
 create index if not exists deliveries_client_id_idx on public.deliveries ("clientId");

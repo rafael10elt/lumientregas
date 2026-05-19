@@ -14,6 +14,7 @@ import {
   createOperationalBase,
   getDeliveries,
   getDeliveryById,
+  getDeliveryByCode,
   getDeliveryEvents,
   getOperationalBases,
   getDriverVehicles,
@@ -61,6 +62,29 @@ export const appRouter = router({
       .input(z.object({ slug: z.string().min(1) }))
       .query(async ({ input }) => getTenantBySlug(input.slug)),
 
+    trackDeliveryByCode: publicProcedure
+      .input(
+        z.object({
+          slug: z.string().min(1),
+          code: z.string().min(3),
+        })
+      )
+      .query(async ({ input }) => {
+        const tenant = await getTenantBySlug(input.slug);
+        if (!tenant) return null;
+
+        const delivery = await getDeliveryByCode(tenant.id, input.code);
+        if (!delivery) return null;
+
+        return {
+          deliveryCode: delivery.deliveryCode,
+          status: delivery.status,
+          destinationAddress: delivery.destinationAddress,
+          destinationPostalCode: delivery.destinationPostalCode,
+          scheduledAt: delivery.scheduledAt,
+        };
+      }),
+
     createDeliveryRequest: publicProcedure
       .input(
         z.object({
@@ -94,6 +118,7 @@ export const appRouter = router({
         const delivery = await createDelivery(
           {
             tenantId: tenant.id,
+            deliveryCode: undefined,
             clientName: input.clientName,
             clientPhone: input.clientPhone,
             originPostalCode: input.originPostalCode ?? null,
@@ -116,6 +141,7 @@ export const appRouter = router({
           },
           delivery: {
             id: delivery?.id ?? "",
+            code: delivery?.deliveryCode ?? "",
             clientName: input.clientName,
             clientPhone: input.clientPhone,
             destinationAddress: input.destinationAddress,

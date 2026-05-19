@@ -173,7 +173,14 @@ export default function Deliveries() {
 
   const visibleDeliveries = useMemo(() => {
     const filtered = deliveries.filter((d: any) =>
-      [d.clientName, d.originAddress, d.destinationAddress, d.originPostalCode, d.destinationPostalCode]
+      [
+        d.clientName,
+        d.deliveryCode,
+        d.originAddress,
+        d.destinationAddress,
+        d.originPostalCode,
+        d.destinationPostalCode,
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -519,6 +526,9 @@ export default function Deliveries() {
           </td>
           <td className="py-3 px-4">
             <div className="font-medium">{delivery.clientName}</div>
+            <div className="mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {delivery.deliveryCode || "Sem código"}
+            </div>
             <div className="text-xs text-muted-foreground">{delivery.originPostalCode || "-"}</div>
           </td>
           <td className="py-3 px-4">

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { randomBytes } from "node:crypto";
 import {
   type Client,
   type ClientBase,
@@ -38,6 +39,16 @@ function removeUndefined<T extends Record<string, unknown>>(value: T): Partial<T
   return Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined)
   ) as Partial<T>;
+}
+
+function generateDeliveryCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(6);
+  let code = "";
+  for (const byte of bytes) {
+    code += alphabet[byte % alphabet.length];
+  }
+  return `DEL-${code}`;
 }
 
 async function estimateDeliveryMetrics(originAddress: string, destinationAddress: string) {
@@ -155,6 +166,7 @@ function mapVehicleAssignment(row: Record<string, any>): VehicleAssignment {
 function mapDelivery(row: Record<string, any>): Delivery {
   return {
     id: String(row.id),
+    deliveryCode: String(pickField<string>(row, "deliveryCode", "deliverycode") ?? ""),
     clientId: row.clientId ?? null,
     baseId: row.baseId ?? null,
     clientName: String(row.clientName),
@@ -868,6 +880,20 @@ export async function getDeliveryById(id: string, accessToken?: string | null) {
   return data ? mapDelivery(data) : undefined;
 }
 
+export async function getDeliveryByCode(tenantId: string, deliveryCode: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const normalizedCode = deliveryCode.trim().toUpperCase();
+  const { data, error } = await db
+    .from("deliveries")
+    .select("*")
+    .eq("tenantId", tenantId)
+    .eq("deliveryCode", normalizedCode)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapDelivery(data) : undefined;
+}
+
 export async function getDeliveryEvents(
   filters?: {
     deliveryId?: string;
@@ -933,12 +959,31 @@ export async function createDelivery(delivery: InsertDelivery, accessToken?: str
     delivery.distance && delivery.estimatedTime
       ? null
       : await estimateDeliveryMetrics(resolvedOriginAddress, delivery.destinationAddress);
+  let finalDeliveryCode = (delivery.deliveryCode ?? generateDeliveryCode()).trim().toUpperCase();
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = attempt === 0 ? finalDeliveryCode : generateDeliveryCode();
+    const { data: existingCode, error: codeError } = await db
+      .from("deliveries")
+      .select("id")
+      .eq("tenantId", delivery.tenantId)
+      .eq("deliveryCode", candidate)
+      .maybeSingle();
+
+    if (codeError) throw codeError;
+    if (!existingCode) {
+      finalDeliveryCode = candidate;
+      break;
+    }
+  }
+
   const { data, error } = await db
     .from("deliveries")
     .insert(
       removeUndefined({
         ...delivery,
         tenantId: delivery.tenantId ?? undefined,
+        deliveryCode: finalDeliveryCode,
         clientId: delivery.clientId ?? null,
         baseId: resolvedBaseId,
         clientPhone: delivery.clientPhone ?? null,

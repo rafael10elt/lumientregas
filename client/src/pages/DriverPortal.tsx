@@ -108,6 +108,9 @@ function DriverDeliveryCard({
                   delivery.status}
               </Badge>
               <Badge variant="secondary">Ordem {delivery.routeOrder ?? "auto"}</Badge>
+              <Badge variant="outline" className="font-mono">
+                {delivery.deliveryCode || "Sem código"}
+              </Badge>
               <Badge variant="outline">{delivery.destinationPostalCode || "Sem CEP"}</Badge>
             </div>
 

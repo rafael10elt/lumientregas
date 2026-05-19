@@ -8,6 +8,7 @@ type N8nDeliveryRequestPayload = {
   };
   delivery: {
     id: string;
+    code: string;
     clientName: string;
     clientPhone: string;
     destinationAddress: string;
