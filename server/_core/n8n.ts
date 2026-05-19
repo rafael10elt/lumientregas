@@ -5,6 +5,9 @@ type N8nDeliveryRequestPayload = {
     id: string;
     name: string;
     slug: string;
+    contactName: string | null;
+    contactEmail: string | null;
+    contactPhone: string | null;
   };
   delivery: {
     id: string;

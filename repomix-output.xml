@@ -55,6 +55,7 @@ client/src/components/BrandMark.tsx
 client/src/components/ConfirmProvider.tsx
 client/src/components/DashboardLayout.tsx
 client/src/components/DashboardLayoutSkeleton.tsx
+client/src/components/DeliveryFormFields.tsx
 client/src/components/ErrorBoundary.tsx
 client/src/components/ManusDialog.tsx
 client/src/components/Map.tsx
@@ -138,6 +139,7 @@ client/src/pages/Drivers.tsx
 client/src/pages/Home.tsx
 client/src/pages/Login.tsx
 client/src/pages/NotFound.tsx
+client/src/pages/PublicDeliveryRequest.tsx
 client/src/pages/ResetPassword.tsx
 client/src/pages/Routes.tsx
 client/src/pages/Tenants.tsx
@@ -172,6 +174,7 @@ server/_core/imageGeneration.ts
 server/_core/index.ts
 server/_core/llm.ts
 server/_core/map.ts
+server/_core/n8n.ts
 server/_core/notification.ts
 server/_core/routePlanner.ts
 server/_core/storageProxy.ts
@@ -1687,6 +1690,276 @@ export function DashboardLayoutSkeleton() {
           <Skeleton className="h-32 rounded-xl" />
         </div>
         <Skeleton className="h-64 rounded-xl" />
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="client/src/components/DeliveryFormFields.tsx">
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { formatCep, formatPhone } from "@/lib/format";
+import type { Dispatch, SetStateAction } from "react";
+
+export type DeliveryStatusValue = "pendente" | "em_rota" | "entregue" | "cancelado";
+
+export type DeliveryFormValues = {
+  clientName: string;
+  clientPhone: string;
+  baseId: string;
+  originPostalCode: string;
+  originAddress: string;
+  destinationPostalCode: string;
+  destinationAddress: string;
+  driverId: string;
+  notes: string;
+  scheduledAt: string;
+  status: DeliveryStatusValue;
+};
+
+export const DELIVERY_STATUS_LABELS: Record<DeliveryStatusValue, string> = {
+  pendente: "Pendente",
+  em_rota: "Em rota",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
+};
+
+type Props<T extends DeliveryFormValues> = {
+  value: T;
+  setValue: Dispatch<SetStateAction<T>>;
+  bases: any[];
+  driverOptions: any[];
+  showStatus?: boolean;
+  loadingCep?: "origin" | "destination" | null;
+  onLookupCep: (type: "origin" | "destination") => void;
+  onBaseChange?: (base: any | null) => void;
+  selectedBaseLabel?: string | null;
+  baseEmptyLabel?: string;
+  driverEmptyLabel?: string;
+  notesPlaceholder?: string;
+  clientPlaceholder?: string;
+  originPlaceholder?: string;
+  destinationPlaceholder?: string;
+  statusLabelMap?: Record<DeliveryStatusValue, string>;
+};
+
+export function DeliveryFormFields<T extends DeliveryFormValues>({
+  value,
+  setValue,
+  bases,
+  driverOptions,
+  showStatus = false,
+  loadingCep,
+  onLookupCep,
+  onBaseChange,
+  selectedBaseLabel,
+  baseEmptyLabel = "Base principal automática",
+  driverEmptyLabel = "Sem motorista",
+  notesPlaceholder = "Observações adicionais...",
+  clientPlaceholder = "Ex: João Silva",
+  originPlaceholder = "Rua, número, bairro",
+  destinationPlaceholder = "Rua, número, bairro",
+  statusLabelMap = DELIVERY_STATUS_LABELS,
+}: Props<T>) {
+  const selectedBase = bases.find((base: any) => String(base.id) === String(value.baseId)) ?? null;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-2 md:col-span-2">
+        <Label>Cliente *</Label>
+        <Input
+          placeholder={clientPlaceholder}
+          value={value.clientName}
+          onChange={e => setValue(prev => ({ ...prev, clientName: e.target.value }))}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Telefone do cliente *</Label>
+        <Input
+          placeholder="(81) 99999-9999"
+          value={value.clientPhone}
+          onChange={e =>
+            setValue(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
+          }
+          inputMode="tel"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Base operacional *</Label>
+        <Select
+          value={value.baseId || "unassigned"}
+          onValueChange={baseId => {
+            const base = bases.find((entry: any) => String(entry.id) === baseId) ?? null;
+            setValue(prev => ({
+              ...prev,
+              baseId: baseId === "unassigned" ? "" : baseId,
+            }));
+            onBaseChange?.(base);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione a base" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="unassigned">{baseEmptyLabel}</SelectItem>
+            {bases.map((base: any) => (
+              <SelectItem key={base.id} value={String(base.id)}>
+                {base.name}
+                {base.isPrimary ? " (principal)" : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedBaseLabel ? (
+          <p className="text-xs text-muted-foreground">{selectedBaseLabel}</p>
+        ) : selectedBase ? (
+          <p className="text-xs text-muted-foreground">
+            {selectedBase.street}, {selectedBase.number || "-"} - {selectedBase.city}/{selectedBase.state}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <Label>CEP de origem</Label>
+        <div className="flex gap-2">
+          <Input
+            placeholder="00000-000"
+            value={value.originPostalCode}
+            onChange={e =>
+              setValue(prev => ({
+                ...prev,
+                originPostalCode: formatCep(e.target.value),
+              }))
+            }
+            inputMode="numeric"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onLookupCep("origin")}
+            disabled={loadingCep === "origin"}
+          >
+            Consultar
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>CEP de destino</Label>
+        <div className="flex gap-2">
+          <Input
+            placeholder="00000-000"
+            value={value.destinationPostalCode}
+            onChange={e =>
+              setValue(prev => ({
+                ...prev,
+                destinationPostalCode: formatCep(e.target.value),
+              }))
+            }
+            inputMode="numeric"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onLookupCep("destination")}
+            disabled={loadingCep === "destination"}
+          >
+            Consultar
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Endereço de origem *</Label>
+        <Input
+          placeholder={originPlaceholder}
+          value={value.originAddress}
+          onChange={e => setValue(prev => ({ ...prev, originAddress: e.target.value }))}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Endereço de destino *</Label>
+        <Input
+          placeholder={destinationPlaceholder}
+          value={value.destinationAddress}
+          onChange={e => setValue(prev => ({ ...prev, destinationAddress: e.target.value }))}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Motorista ativo</Label>
+        <Select
+          value={value.driverId || "unassigned"}
+          onValueChange={driverId =>
+            setValue(prev => ({
+              ...prev,
+              driverId: driverId === "unassigned" ? "" : driverId,
+            }))
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione um motorista ativo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="unassigned">{driverEmptyLabel}</SelectItem>
+            {driverOptions.map((driver: any) => (
+              <SelectItem key={driver.id} value={String(driver.id)}>
+                {driver.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Data/Hora Agendada</Label>
+        <Input
+          type="datetime-local"
+          value={value.scheduledAt}
+          onChange={e => setValue(prev => ({ ...prev, scheduledAt: e.target.value }))}
+        />
+      </div>
+
+      {showStatus ? (
+        <div className="space-y-2">
+          <Label>Status da entrega</Label>
+          <Select
+            value={value.status}
+            onValueChange={status =>
+              setValue(prev => ({
+                ...prev,
+                status: status as DeliveryStatusValue,
+              }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o status" />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(statusLabelMap) as DeliveryStatusValue[]).map(status => (
+                <SelectItem key={status} value={status}>
+                  {statusLabelMap[status]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
+      <div className="space-y-2 md:col-span-2">
+        <Label>Observações</Label>
+        <Textarea
+          placeholder={notesPlaceholder}
+          value={value.notes}
+          onChange={e => setValue(prev => ({ ...prev, notes: e.target.value }))}
+        />
       </div>
     </div>
   );
@@ -14285,6 +14558,69 @@ export default function Vehicles() {
 }
 </file>
 
+<file path="server/_core/n8n.ts">
+import { ENV } from "./env";
+
+type N8nDeliveryRequestPayload = {
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  delivery: {
+    id: string;
+    code: string;
+    clientName: string;
+    clientPhone: string;
+    destinationAddress: string;
+    destinationPostalCode: string | null;
+    notes: string | null;
+    scheduledAt: string | null;
+    status: string;
+  };
+  request: Record<string, unknown>;
+  submittedAt: string;
+  source: "public-portal";
+};
+
+export async function forwardDeliveryRequestToN8n(payload: N8nDeliveryRequestPayload) {
+  if (!ENV.n8nDeliveryWebhookUrl) {
+    return { forwarded: false as const, error: null };
+  }
+
+  try {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+
+    if (ENV.n8nDeliveryWebhookToken) {
+      headers["x-lumi-webhook-token"] = ENV.n8nDeliveryWebhookToken;
+    }
+
+    const response = await fetch(ENV.n8nDeliveryWebhookUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      return {
+        forwarded: false as const,
+        error: `N8N webhook returned ${response.status}${text ? `: ${text}` : ""}`,
+      };
+    }
+
+    return { forwarded: true as const, error: null };
+  } catch (error: any) {
+    return {
+      forwarded: false as const,
+      error: error?.message ?? "Failed to forward delivery request to N8N",
+    };
+  }
+}
+</file>
+
 <file path="client/src/components/BrandMark.tsx">
 type BrandMarkProps = {
   size?: "sm" | "md" | "lg";
@@ -14597,6 +14933,510 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+</file>
+
+<file path="client/src/pages/PublicDeliveryRequest.tsx">
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { lookupCep } from "@/lib/cep";
+import { formatPhone, formatCep } from "@/lib/format";
+import { openWhatsApp } from "@/lib/navigation";
+import { trpc } from "@/lib/trpc";
+import { Badge } from "@/components/ui/badge";
+import {
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Loader2,
+  MessageCircleMore,
+  Search,
+  ShieldAlert,
+  Send,
+  Truck,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { formatDateTime } from "@/lib/datetime";
+
+type PublicDeliveryRequestProps = {
+  tenantSlug: string;
+};
+
+type PublicRequestForm = {
+  clientName: string;
+  clientPhone: string;
+  destinationPostalCode: string;
+  destinationAddress: string;
+  scheduledAt: string;
+  notes: string;
+};
+
+type PublicTrackingResult = {
+  deliveryCode: string;
+  status: "pendente" | "em_rota" | "entregue" | "cancelado";
+  destinationAddress: string;
+  destinationPostalCode: string | null;
+  scheduledAt: string | null;
+};
+
+const emptyForm: PublicRequestForm = {
+  clientName: "",
+  clientPhone: "",
+  destinationPostalCode: "",
+  destinationAddress: "",
+  scheduledAt: "",
+  notes: "",
+};
+
+const STATUS_LABELS: Record<PublicTrackingResult["status"], string> = {
+  pendente: "Pendente",
+  em_rota: "Em rota",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
+};
+
+const STATUS_STYLES: Record<PublicTrackingResult["status"], string> = {
+  pendente: "border-yellow-200 bg-yellow-50 text-yellow-800",
+  em_rota: "border-blue-200 bg-blue-50 text-blue-800",
+  entregue: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  cancelado: "border-rose-200 bg-rose-50 text-rose-800",
+};
+
+export default function PublicDeliveryRequest({ tenantSlug }: PublicDeliveryRequestProps) {
+  const [formData, setFormData] = useState<PublicRequestForm>(emptyForm);
+  const [loadingCep, setLoadingCep] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<{
+    deliveryCode: string;
+  } | null>(null);
+  const [trackingInput, setTrackingInput] = useState("");
+  const [trackingCode, setTrackingCode] = useState("");
+  const [trackingOpen, setTrackingOpen] = useState(false);
+
+  const tenantQuery = trpc.publicPortal.tenantBySlug.useQuery(
+    { slug: tenantSlug },
+    { retry: false, refetchOnWindowFocus: false }
+  );
+  const submitMutation = trpc.publicPortal.createDeliveryRequest.useMutation();
+  const trackingQuery = trpc.publicPortal.trackDeliveryByCode.useQuery(
+    { slug: tenantSlug, code: trackingCode },
+    {
+      enabled: trackingOpen && Boolean(trackingCode),
+      retry: false,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  const tenant = tenantQuery.data ?? null;
+  const statusIsBlocked = Boolean(
+    tenant && (tenant.status !== "active" || tenant.paymentStatus !== "ok")
+  );
+
+  const titleAccent = useMemo(() => {
+    const palette = [
+      "from-sky-500 to-cyan-500",
+      "from-amber-500 to-orange-500",
+      "from-emerald-500 to-teal-500",
+      "from-rose-500 to-pink-500",
+      "from-violet-500 to-fuchsia-500",
+    ];
+    const index = [...tenantSlug].reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return palette[index % palette.length];
+  }, [tenantSlug]);
+
+  const fillDestinationCep = async () => {
+    if (!formData.destinationPostalCode) {
+      toast.error("Informe o CEP de destino");
+      return;
+    }
+
+    setLoadingCep(true);
+    try {
+      const result = await lookupCep(formData.destinationPostalCode);
+      setFormData(prev => ({
+        ...prev,
+        destinationPostalCode: result.cep,
+        destinationAddress: result.fullAddress,
+      }));
+      toast.success("CEP localizado com sucesso");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível consultar o CEP");
+    } finally {
+      setLoadingCep(false);
+    }
+  };
+
+  const submitRequest = async () => {
+    if (!tenant) return;
+    if (statusIsBlocked) {
+      toast.error("Este tenant está temporariamente bloqueado");
+      return;
+    }
+
+    if (!formData.clientName || !formData.clientPhone || !formData.destinationAddress) {
+      toast.error("Preencha os campos obrigatórios");
+      return;
+    }
+
+    try {
+      const response = await submitMutation.mutateAsync({
+        tenantSlug,
+        clientName: formData.clientName,
+        clientPhone: formData.clientPhone,
+        destinationPostalCode: formData.destinationPostalCode || undefined,
+        destinationAddress: formData.destinationAddress,
+        scheduledAt: formData.scheduledAt ? new Date(formData.scheduledAt).toISOString() : undefined,
+        notes: formData.notes || undefined,
+      });
+
+      setFormData(emptyForm);
+      setSubmissionResult({ deliveryCode: response.delivery?.deliveryCode ?? "" });
+      toast.success("Solicitação enviada com sucesso");
+      if (!response.webhookForwarded && response.webhookError) {
+        toast.warning("A solicitação foi registrada, mas houve falha ao disparar o fluxo automático");
+      }
+    } catch (error: any) {
+      toast.error(error?.message ?? "Não foi possível enviar a solicitação");
+    }
+  };
+
+  const copyDeliveryCode = async (code: string) => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success("Código copiado");
+    } catch {
+      toast.error("Não foi possível copiar o código");
+    }
+  };
+
+  const openTracking = () => {
+    const code = trackingInput.trim().toUpperCase();
+    if (!code) {
+      toast.error("Informe o código de entrega");
+      return;
+    }
+    setTrackingCode(code);
+    setTrackingOpen(true);
+  };
+
+  if (tenantQuery.isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!tenant) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4 text-white">
+        <Card className="w-full max-w-xl border-white/10 bg-white/5 text-white shadow-2xl backdrop-blur">
+          <CardHeader>
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
+              <ShieldAlert className="h-6 w-6 text-amber-300" />
+            </div>
+            <CardTitle>Tenant não encontrado</CardTitle>
+            <CardDescription className="text-slate-300">
+              Verifique se o link da solicitação está correto.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.16),_transparent_36%),linear-gradient(180deg,_#08111f_0%,_#0f172a_48%,_#0b1220_100%)] px-4 py-8 text-white">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+        <Card className="overflow-hidden border-white/10 bg-white/10 shadow-2xl backdrop-blur">
+          <CardHeader className="relative">
+            <div className={`mb-5 inline-flex w-fit rounded-full bg-gradient-to-r ${titleAccent} px-4 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-white`}>
+              {tenant.slug}
+            </div>
+            <CardTitle className="text-3xl text-white">Solicitar entrega para {tenant.name}</CardTitle>
+            <CardDescription className="max-w-3xl text-slate-300">
+              Faça uma solicitação rápida e acompanhe depois com o código gerado.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Contato</div>
+              <div className="mt-2 text-lg font-semibold text-white">
+                {tenant.contactName || "Contato comercial"}
+              </div>
+              <div className="mt-2 flex flex-col gap-2 text-sm text-slate-300">
+                {tenant.contactPhone ? <span>{tenant.contactPhone}</span> : <span>Telefone não informado</span>}
+                {tenant.contactEmail ? <span>{tenant.contactEmail}</span> : <span>E-mail não informado</span>}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {tenant.contactPhone ? (
+                  <Button asChild variant="secondary" size="sm" className="gap-2">
+                    <a href={`tel:${tenant.contactPhone.replace(/\D/g, "")}`}>
+                      <Truck className="h-4 w-4" />
+                      Ligar
+                    </a>
+                  </Button>
+                ) : null}
+                {tenant.contactPhone ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-white/20 text-white hover:bg-white/10"
+                    onClick={() =>
+                      openWhatsApp(
+                        tenant.contactPhone ?? "",
+                        `Olá ${tenant.contactName || tenant.name}, gostaria de solicitar uma entrega.`
+                      )
+                    }
+                  >
+                    <MessageCircleMore className="h-4 w-4" />
+                    WhatsApp
+                  </Button>
+                ) : null}
+                {tenant.contactEmail ? (
+                  <Button asChild variant="outline" size="sm" className="gap-2 border-white/20 text-white hover:bg-white/10">
+                    <a href={`mailto:${tenant.contactEmail}`}>
+                      <ExternalLink className="h-4 w-4" />
+                      E-mail
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Solicitação</div>
+              <div className="mt-2 text-sm text-slate-300">
+                Preencha os dados abaixo. O sistema gera um código de entrega ao final.
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Rastrear entrega</div>
+              <div className="mt-2 text-sm text-slate-300">
+                Use o código de entrega para acompanhar o status.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {statusIsBlocked ? (
+          <Card className="border-rose-200/20 bg-rose-500/10 text-white shadow-2xl backdrop-blur">
+            <CardHeader>
+              <CardTitle>Solicitações indisponíveis no momento</CardTitle>
+              <CardDescription className="text-rose-100">
+                {tenant.status !== "active"
+                  ? "Este tenant está suspenso."
+                  : "Este tenant está com pendência financeira e não pode receber novas solicitações."}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : null}
+
+        <div className="grid gap-6 lg:grid-cols-[1.4fr,0.9fr]">
+          <Card className="border-white/10 bg-white shadow-2xl">
+            <CardHeader>
+              <CardTitle className="text-slate-900">Nova solicitação de entrega</CardTitle>
+              <CardDescription>
+                Preencha os dados abaixo e o sistema irá registrar a solicitação e disparar o fluxo automático.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Cliente *</Label>
+                  <Input
+                    placeholder="Nome de quem está solicitando"
+                    value={formData.clientName}
+                    onChange={e => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Telefone *</Label>
+                  <Input
+                    placeholder="(81) 99999-9999"
+                    value={formData.clientPhone}
+                    onChange={e =>
+                      setFormData(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
+                    }
+                    inputMode="tel"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Data/Hora desejada</Label>
+                  <Input
+                    type="datetime-local"
+                    value={formData.scheduledAt}
+                    onChange={e => setFormData(prev => ({ ...prev, scheduledAt: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>CEP de destino</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="00000-000"
+                      value={formData.destinationPostalCode}
+                      onChange={e =>
+                        setFormData(prev => ({
+                          ...prev,
+                          destinationPostalCode: formatCep(e.target.value),
+                        }))
+                      }
+                      inputMode="numeric"
+                    />
+                    <Button type="button" variant="outline" onClick={fillDestinationCep} disabled={loadingCep}>
+                      <Search className="mr-2 h-4 w-4" />
+                      Consultar
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Endereço de destino *</Label>
+                  <Input
+                    placeholder="Rua, número, bairro"
+                    value={formData.destinationAddress}
+                    onChange={e => setFormData(prev => ({ ...prev, destinationAddress: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Observações</Label>
+                  <Textarea
+                    placeholder="Detalhes adicionais da coleta ou entrega..."
+                    value={formData.notes}
+                    onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4">
+                <div className="flex items-center gap-3 text-sm text-slate-600">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  A solicitação será criada com status pendente, aguardando a aprovação.
+                </div>
+                <Button onClick={submitRequest} disabled={statusIsBlocked || submitMutation.isPending} className="gap-2">
+                  {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Enviar solicitação
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-6">
+            <Card className="border-white/10 bg-white/10 text-white shadow-2xl backdrop-blur">
+              <CardHeader>
+                <CardTitle className="text-white">Código da entrega</CardTitle>
+                <CardDescription className="text-slate-300">
+                  Após enviar, o código aparece aqui para copiar e acompanhar depois.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {submissionResult?.deliveryCode ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Novo código</div>
+                    <div className="mt-2 text-2xl font-bold text-white">{submissionResult.deliveryCode}</div>
+                    <div className="mt-4 flex gap-2">
+                      <Button
+                        variant="secondary"
+                        className="gap-2"
+                        onClick={() => copyDeliveryCode(submissionResult.deliveryCode)}
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copiar código
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-white/20 p-4 text-sm text-slate-300">
+                    Nenhuma solicitação enviada ainda.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-white/10 bg-white/10 text-white shadow-2xl backdrop-blur">
+              <CardHeader>
+                <CardTitle className="text-white">Rastrear por código</CardTitle>
+                <CardDescription className="text-slate-300">
+                  Informe o código para ver apenas as informações da entrega.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-slate-200">Código de rastreio</Label>
+                  <Input
+                    placeholder="DEL-ABC123"
+                    value={trackingInput}
+                    onChange={e => setTrackingInput(e.target.value.toUpperCase())}
+                    className="border-white/10 bg-white/5 text-white placeholder:text-slate-400"
+                  />
+                </div>
+                <Button onClick={openTracking} className="w-full gap-2">
+                  <Search className="h-4 w-4" />
+                  Consultar Entrega
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={trackingOpen} onOpenChange={setTrackingOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Rastreio da entrega</DialogTitle>
+            <DialogDescription>
+              
+            </DialogDescription>
+          </DialogHeader>
+
+          {trackingQuery.isLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : trackingQuery.data ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className={STATUS_STYLES[trackingQuery.data.status] ?? ""}>
+                  {STATUS_LABELS[trackingQuery.data.status] ?? trackingQuery.data.status}
+                </Badge>
+                <Badge variant="secondary">{trackingQuery.data.deliveryCode}</Badge>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Destino</div>
+                  <div className="mt-1 text-sm font-medium">{trackingQuery.data.destinationAddress}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {trackingQuery.data.destinationPostalCode || "Sem CEP"}
+                  </div>
+                </div>
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Agendamento</div>
+                  <div className="mt-1 text-sm font-medium">
+                    {trackingQuery.data.scheduledAt ? formatDateTime(trackingQuery.data.scheduledAt) : "Sem agendamento"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+              Nenhuma entrega encontrada para este código.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -14983,26 +15823,6 @@ self.addEventListener("fetch", event => {
 });
 </file>
 
-<file path="server/_core/env.ts">
-const supabaseProjectId =
-  process.env.SUPABASE_PROJECT_ID ?? process.env.SUPABASE_PROJECT_REF ?? "";
-
-export const ENV = {
-  appId: process.env.VITE_APP_ID ?? "",
-  cookieSecret: process.env.JWT_SECRET ?? "",
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
-  isProduction: process.env.NODE_ENV === "production",
-  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
-  supabaseProjectId,
-  supabaseUrl: process.env.SUPABASE_URL ?? (supabaseProjectId ? `https://${supabaseProjectId}.supabase.co` : ""),
-  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
-  supabaseServiceRoleKey:
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_ROLE ?? "",
-};
-</file>
-
 <file path="server/_core/storageProxy.ts">
 import type { Express } from "express";
 import { ENV } from "./env";
@@ -15356,6 +16176,28 @@ export function createApp(): Express {
 }
 </file>
 
+<file path="server/_core/env.ts">
+const supabaseProjectId =
+  process.env.SUPABASE_PROJECT_ID ?? process.env.SUPABASE_PROJECT_REF ?? "";
+
+export const ENV = {
+  appId: process.env.VITE_APP_ID ?? "",
+  cookieSecret: process.env.JWT_SECRET ?? "",
+  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+  isProduction: process.env.NODE_ENV === "production",
+  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
+  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  n8nDeliveryWebhookUrl: process.env.N8N_DELIVERY_WEBHOOK_URL ?? "",
+  n8nDeliveryWebhookToken: process.env.N8N_DELIVERY_WEBHOOK_TOKEN ?? "",
+  supabaseProjectId,
+  supabaseUrl: process.env.SUPABASE_URL ?? (supabaseProjectId ? `https://${supabaseProjectId}.supabase.co` : ""),
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
+  supabaseServiceRoleKey:
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_ROLE ?? "",
+};
+</file>
+
 <file path="server/_core/trpc.ts">
 import { NOT_ADMIN_ERR_MSG, TENANT_BLOCKED_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
@@ -15449,19 +16291,6 @@ export const superadminProcedure = t.procedure.use(
     });
   }),
 );
-</file>
-
-<file path=".env.example">
-BUILT_IN_FORGE_API_URL=
-BUILT_IN_FORGE_API_KEY=
-
-SUPABASE_PROJECT_ID=hmfshljqjrsnonrbkira
-SUPABASE_URL=https://hmfshljqjrsnonrbkira.supabase.co
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-VITE_SUPABASE_URL=https://hmfshljqjrsnonrbkira.supabase.co
-VITE_SUPABASE_ANON_KEY=
 </file>
 
 <file path="client/index.html">
@@ -16091,6 +16920,21 @@ export async function createContext(
     accessToken,
   };
 }
+</file>
+
+<file path=".env.example">
+BUILT_IN_FORGE_API_URL=
+BUILT_IN_FORGE_API_KEY=
+N8N_DELIVERY_WEBHOOK_URL=https://n8n.lumitechia.com.br/webhook/solicitacao-entrega
+N8N_DELIVERY_WEBHOOK_TOKEN=
+
+SUPABASE_PROJECT_ID=hmfshljqjrsnonrbkira
+SUPABASE_URL=https://hmfshljqjrsnonrbkira.supabase.co
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+VITE_SUPABASE_URL=https://hmfshljqjrsnonrbkira.supabase.co
+VITE_SUPABASE_ANON_KEY=
 </file>
 
 <file path="client/src/_core/hooks/useAuth.ts">
@@ -17432,190 +18276,6 @@ export default function Drivers() {
 }
 </file>
 
-<file path="client/src/App.tsx">
-import { useAuth } from "./_core/hooks/useAuth";
-import ErrorBoundary from "./components/ErrorBoundary";
-import DashboardLayout from "./components/DashboardLayout";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import Dashboard from "./pages/Dashboard";
-import Deliveries from "./pages/Deliveries";
-import Bases from "./pages/Bases";
-import Vehicles from "./pages/Vehicles";
-import Users from "./pages/Users";
-import Routes from "./pages/Routes";
-import Analytics from "./pages/Analytics";
-import Login from "./pages/Login";
-import ResetPassword from "./pages/ResetPassword";
-import DriverPortal from "./pages/DriverPortal";
-import Tenants from "./pages/Tenants";
-import NotFound from "@/pages/NotFound";
-import { Loader2, ShieldAlert } from "lucide-react";
-import { Route, Switch } from "wouter";
-import { useEffect } from "react";
-import { useLocation } from "wouter";
-import { ConfirmProvider } from "./components/ConfirmProvider";
-
-function TenantBlockedScreen({
-  tenantName,
-  reason,
-  onLogout,
-}: {
-  tenantName?: string | null;
-  reason?: string | null;
-  onLogout: () => void;
-}) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-amber-50 via-background to-slate-50 p-4">
-      <Card className="w-full max-w-lg shadow-xl">
-        <CardHeader>
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-            <ShieldAlert className="h-6 w-6" />
-          </div>
-          <CardTitle>Acesso temporariamente bloqueado</CardTitle>
-          <CardDescription>
-            {tenantName
-              ? `O tenant ${tenantName} está sem acesso no momento.`
-              : "Seu tenant está sem acesso no momento."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            {reason || "Entre em contato com o administrador do sistema para regularizar o pagamento ou o status do tenant."}
-          </p>
-          <Button onClick={onLogout} className="w-full">
-            Sair da conta
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function Router() {
-  const { isAuthenticated, loading, user, accessBlocked, accessBlockedReason, tenant, logout } = useAuth();
-  const [location, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (!user) return;
-    const tenantPages = ["/", "/deliveries", "/bases", "/vehicles", "/routes", "/analytics"];
-    const saasPages = ["/tenants", "/users"];
-
-    if (user.role === "motorista") {
-      if (location === "/driver") return;
-      if (location === "/login" || location === "/trocar-senha") return;
-      setLocation("/driver");
-      return;
-    }
-
-    if (user.role === "superadmin") {
-      if (location === "/login" || location === "/trocar-senha") return;
-      if (location === "/" || tenantPages.includes(location)) {
-        setLocation("/tenants");
-        return;
-      }
-      if (saasPages.includes(location)) return;
-      if (location === "/driver") return;
-      setLocation("/tenants");
-      return;
-    }
-
-    if (location === "/drivers") {
-      setLocation("/vehicles");
-      return;
-    }
-
-    if (location === "/tenants") {
-      setLocation("/");
-    }
-  }, [location, setLocation, user]);
-
-  if (location === "/login") {
-    if (loading) {
-      return (
-        <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      );
-    }
-
-    if (isAuthenticated) {
-      return (
-        <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      );
-    }
-
-    return <Login />;
-  }
-
-  if (location === "/trocar-senha") {
-    return <ResetPassword />;
-  }
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Login />;
-  }
-
-  if (accessBlocked && user?.role !== "superadmin") {
-    return (
-      <TenantBlockedScreen
-        tenantName={tenant?.name}
-        reason={accessBlockedReason}
-        onLogout={logout}
-      />
-    );
-  }
-
-  return (
-    <DashboardLayout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/deliveries" component={Deliveries} />
-        <Route path="/bases" component={Bases} />
-        <Route path="/vehicles" component={Vehicles} />
-        <Route path="/drivers" component={Vehicles} />
-        <Route path="/users" component={Users} />
-        <Route path="/routes" component={Routes} />
-        <Route path="/driver" component={DriverPortal} />
-        <Route path="/analytics" component={Analytics} />
-        <Route path="/tenants" component={Tenants} />
-        <Route component={NotFound} />
-      </Switch>
-    </DashboardLayout>
-  );
-}
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <ConfirmProvider>
-            <Toaster />
-            <Router />
-          </ConfirmProvider>
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  );
-}
-
-export default App;
-</file>
-
 <file path="client/src/components/DashboardLayout.tsx">
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -17888,6 +18548,321 @@ function DashboardLayoutContent({
 }
 </file>
 
+<file path="client/src/pages/Login.tsx">
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { RESET_PASSWORD_PATH } from "@/const";
+import { BrandMark } from "@/components/BrandMark";
+import { supabase } from "@/lib/supabase";
+import { useState } from "react";
+import { useLocation } from "wouter";
+import { toast } from "sonner";
+
+export default function Login() {
+  const [, setLocation] = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submitSignIn = async () => {
+    if (!email || !password) {
+      toast.error("Informe e-mail e senha");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    setLoading(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Login realizado com sucesso");
+    setLocation("/");
+  };
+
+  const submitPasswordReset = async () => {
+    if (!email) {
+      toast.error("Informe seu e-mail para receber o link de redefinição");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}${RESET_PASSWORD_PATH}`,
+    });
+    setLoading(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Enviamos um link de redefinição para o seu e-mail.");
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 to-accent/10 p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-card rounded-lg shadow-lg p-8 text-center">
+          <div className="flex justify-center mb-6">
+            <BrandMark size="lg" showText={false} />
+          </div>
+
+          <h1 className="text-3xl font-bold text-foreground mb-2">
+            Lumi Entregas
+          </h1>
+
+          <p className="text-muted-foreground mb-8">
+            Sistema de Gestão de Entregas e Roteirização Inteligente
+          </p>
+
+          <div className="space-y-4 text-left">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                E-mail
+              </label>
+              <Input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="voce@exemplo.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Senha</label>
+              <Input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-2">
+              <Button onClick={submitSignIn} disabled={loading}>
+                Entrar
+              </Button>
+              <Button
+                onClick={submitPasswordReset}
+                variant="ghost"
+                disabled={loading}
+              >
+                Esqueci minha senha
+              </Button>
+            </div>
+
+          </div>
+
+          <div className="mt-8 pt-8 border-t border-border">
+            <p className="text-xs text-muted-foreground">
+              © 2024 Lumi Entregas. Todos os direitos reservados.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="client/src/App.tsx">
+import { useAuth } from "./_core/hooks/useAuth";
+import ErrorBoundary from "./components/ErrorBoundary";
+import DashboardLayout from "./components/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import Dashboard from "./pages/Dashboard";
+import Deliveries from "./pages/Deliveries";
+import Bases from "./pages/Bases";
+import Vehicles from "./pages/Vehicles";
+import Users from "./pages/Users";
+import Routes from "./pages/Routes";
+import Analytics from "./pages/Analytics";
+import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
+import DriverPortal from "./pages/DriverPortal";
+import Tenants from "./pages/Tenants";
+import PublicDeliveryRequest from "./pages/PublicDeliveryRequest";
+import NotFound from "@/pages/NotFound";
+import { Loader2, ShieldAlert } from "lucide-react";
+import { Route, Switch, useRoute } from "wouter";
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+import { ConfirmProvider } from "./components/ConfirmProvider";
+
+function TenantBlockedScreen({
+  tenantName,
+  reason,
+  onLogout,
+}: {
+  tenantName?: string | null;
+  reason?: string | null;
+  onLogout: () => void;
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-amber-50 via-background to-slate-50 p-4">
+      <Card className="w-full max-w-lg shadow-xl">
+        <CardHeader>
+          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+            <ShieldAlert className="h-6 w-6" />
+          </div>
+          <CardTitle>Acesso temporariamente bloqueado</CardTitle>
+          <CardDescription>
+            {tenantName
+              ? `O tenant ${tenantName} está sem acesso no momento.`
+              : "Seu tenant está sem acesso no momento."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {reason || "Entre em contato com o administrador do sistema para regularizar o pagamento ou o status do tenant."}
+          </p>
+          <Button onClick={onLogout} className="w-full">
+            Sair da conta
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Router() {
+  const { isAuthenticated, loading, user, accessBlocked, accessBlockedReason, tenant, logout } = useAuth();
+  const [location, setLocation] = useLocation();
+  const [publicRequestMatch, publicRequestParams] = useRoute("/solicitar/:tenantSlug");
+
+  useEffect(() => {
+    if (publicRequestMatch) return;
+    if (!user) return;
+    const tenantPages = ["/", "/deliveries", "/bases", "/vehicles", "/routes", "/analytics"];
+    const saasPages = ["/tenants", "/users"];
+
+    if (user.role === "motorista") {
+      if (location === "/driver") return;
+      if (location === "/login" || location === "/trocar-senha") return;
+      setLocation("/driver");
+      return;
+    }
+
+    if (user.role === "superadmin") {
+      if (location === "/login" || location === "/trocar-senha") return;
+      if (location === "/" || tenantPages.includes(location)) {
+        setLocation("/tenants");
+        return;
+      }
+      if (saasPages.includes(location)) return;
+      if (location === "/driver") return;
+      setLocation("/tenants");
+      return;
+    }
+
+    if (location === "/drivers") {
+      setLocation("/vehicles");
+      return;
+    }
+
+    if (location === "/tenants") {
+      setLocation("/");
+    }
+  }, [location, publicRequestMatch, setLocation, user]);
+
+  if (publicRequestMatch) {
+    return <PublicDeliveryRequest tenantSlug={publicRequestParams?.tenantSlug ?? ""} />;
+  }
+
+  if (location === "/login") {
+    if (loading) {
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+
+    if (isAuthenticated) {
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+
+    return <Login />;
+  }
+
+  if (location === "/trocar-senha") {
+    return <ResetPassword />;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  if (accessBlocked && user?.role !== "superadmin") {
+    return (
+      <TenantBlockedScreen
+        tenantName={tenant?.name}
+        reason={accessBlockedReason}
+        onLogout={logout}
+      />
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/deliveries" component={Deliveries} />
+        <Route path="/bases" component={Bases} />
+        <Route path="/vehicles" component={Vehicles} />
+        <Route path="/drivers" component={Vehicles} />
+        <Route path="/users" component={Users} />
+        <Route path="/routes" component={Routes} />
+        <Route path="/driver" component={DriverPortal} />
+        <Route path="/analytics" component={Analytics} />
+        <Route path="/tenants" component={Tenants} />
+        <Route component={NotFound} />
+      </Switch>
+    </DashboardLayout>
+  );
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="light">
+        <TooltipProvider>
+          <ConfirmProvider>
+            <Toaster />
+            <Router />
+          </ConfirmProvider>
+        </TooltipProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
+  );
+}
+
+export default App;
+</file>
+
 <file path="client/src/pages/DriverPortal.tsx">
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Badge } from "@/components/ui/badge";
@@ -17999,6 +18974,9 @@ function DriverDeliveryCard({
                   delivery.status}
               </Badge>
               <Badge variant="secondary">Ordem {delivery.routeOrder ?? "auto"}</Badge>
+              <Badge variant="outline" className="font-mono">
+                {delivery.deliveryCode || "Sem código"}
+              </Badge>
               <Badge variant="outline">{delivery.destinationPostalCode || "Sem CEP"}</Badge>
             </div>
 
@@ -18392,130 +19370,6 @@ export default function DriverPortal() {
 }
 </file>
 
-<file path="client/src/pages/Login.tsx">
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { RESET_PASSWORD_PATH } from "@/const";
-import { BrandMark } from "@/components/BrandMark";
-import { supabase } from "@/lib/supabase";
-import { useState } from "react";
-import { useLocation } from "wouter";
-import { toast } from "sonner";
-
-export default function Login() {
-  const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const submitSignIn = async () => {
-    if (!email || !password) {
-      toast.error("Informe e-mail e senha");
-      return;
-    }
-
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    toast.success("Login realizado com sucesso");
-    setLocation("/");
-  };
-
-  const submitPasswordReset = async () => {
-    if (!email) {
-      toast.error("Informe seu e-mail para receber o link de redefinição");
-      return;
-    }
-
-    setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}${RESET_PASSWORD_PATH}`,
-    });
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    toast.success("Enviamos um link de redefinição para o seu e-mail.");
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 to-accent/10 p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-card rounded-lg shadow-lg p-8 text-center">
-          <div className="flex justify-center mb-6">
-            <BrandMark size="lg" showText={false} />
-          </div>
-
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            Lumi Entregas
-          </h1>
-
-          <p className="text-muted-foreground mb-8">
-            Sistema de Gestão de Entregas e Roteirização Inteligente
-          </p>
-
-          <div className="space-y-4 text-left">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                E-mail
-              </label>
-              <Input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="voce@exemplo.com"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Senha</label>
-              <Input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              <Button onClick={submitSignIn} disabled={loading}>
-                Entrar
-              </Button>
-              <Button
-                onClick={submitPasswordReset}
-                variant="ghost"
-                disabled={loading}
-              >
-                Esqueci minha senha
-              </Button>
-            </div>
-
-          </div>
-
-          <div className="mt-8 pt-8 border-t border-border">
-            <p className="text-xs text-muted-foreground">
-              © 2024 Lumi Entregas. Todos os direitos reservados.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-</file>
-
 <file path="drizzle/schema.ts">
 export type UserRole = "superadmin" | "admin" | "motorista";
 export type UserStatus = "active" | "inactive";
@@ -18754,6 +19608,7 @@ export type InsertOperationalBase = {
 
 export type Delivery = {
   id: string;
+  deliveryCode: string;
   clientId: string | null;
   baseId: string | null;
   clientName: string;
@@ -18810,6 +19665,7 @@ export type DeliveryEvent = {
 
 export type InsertDelivery = {
   tenantId?: string;
+  deliveryCode?: string | null;
   clientId?: string | null;
   baseId?: string | null;
   clientName: string;
@@ -19074,6 +19930,7 @@ create table public.deliveries (
   "tenantId" uuid not null references public.tenants (id) on delete cascade,
   "clientId" uuid references public.clients (id) on delete set null,
   "baseId" uuid references public.operational_bases (id) on delete set null,
+  "deliveryCode" text not null unique,
   "clientName" text not null,
   "clientPhone" text,
   "originPostalCode" text,
@@ -19109,6 +19966,12 @@ create table public.deliveries (
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now()
 );
+
+alter table public.deliveries add column if not exists "deliveryCode" text;
+update public.deliveries
+set "deliveryCode" = upper('DEL-' || substring(replace(gen_random_uuid()::text, '-', '') from 1 for 6))
+where "deliveryCode" is null;
+alter table public.deliveries alter column "deliveryCode" set not null;
 
 create table public.delivery_events (
   id uuid primary key default gen_random_uuid(),
@@ -19318,6 +20181,7 @@ create index if not exists operational_bases_tenant_id_idx on public.operational
 create index if not exists operational_bases_primary_idx on public.operational_bases ("tenantId", "isPrimary");
 create unique index if not exists operational_bases_single_primary_idx on public.operational_bases ("tenantId") where "isPrimary";
 create index if not exists deliveries_tenant_id_idx on public.deliveries ("tenantId");
+create index if not exists deliveries_delivery_code_idx on public.deliveries ("deliveryCode");
 create index if not exists deliveries_status_idx on public.deliveries (status);
 create index if not exists deliveries_driver_id_idx on public.deliveries ("driverId");
 create index if not exists deliveries_client_id_idx on public.deliveries ("clientId");
@@ -19550,6 +20414,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/components/ConfirmProvider";
+import { useAuth } from "../_core/hooks/useAuth";
 import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import { formatCep, formatPhone } from "@/lib/format";
 import { openWhatsApp, openGpsRoute } from "@/lib/navigation";
@@ -19563,6 +20428,7 @@ import {
   MessageCircleMore,
   MapPin,
   Navigation,
+  Copy,
   Pencil,
   Plus,
   Search,
@@ -19644,6 +20510,7 @@ const emptyForm: DeliveryForm = {
 };
 
 export default function Deliveries() {
+  const { tenant } = useAuth();
   const { confirm } = useConfirm();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -19692,10 +20559,35 @@ export default function Deliveries() {
   const deleteMutation = trpc.deliveries.delete.useMutation();
   const bulkDeleteMutation = trpc.deliveries.bulkDelete.useMutation();
   const bulkRescheduleMutation = trpc.deliveries.bulkReschedule.useMutation();
+  const publicDeliveryUrl = useMemo(() => {
+    if (typeof window === "undefined" || !tenant?.slug) return "";
+    return `${window.location.origin}/solicitar/${tenant.slug}`;
+  }, [tenant?.slug]);
+
+  const copyPublicUrl = async () => {
+    if (!publicDeliveryUrl) {
+      toast.error("Nao foi possivel montar a URL publica");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(publicDeliveryUrl);
+      toast.success("URL publica copiada");
+    } catch {
+      toast.error("Nao foi possivel copiar a URL");
+    }
+  };
 
   const visibleDeliveries = useMemo(() => {
     const filtered = deliveries.filter((d: any) =>
-      [d.clientName, d.originAddress, d.destinationAddress, d.originPostalCode, d.destinationPostalCode]
+      [
+        d.clientName,
+        d.deliveryCode,
+        d.originAddress,
+        d.destinationAddress,
+        d.originPostalCode,
+        d.destinationPostalCode,
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -20041,6 +20933,9 @@ export default function Deliveries() {
           </td>
           <td className="py-3 px-4">
             <div className="font-medium">{delivery.clientName}</div>
+            <div className="mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {delivery.deliveryCode || "Sem código"}
+            </div>
             <div className="text-xs text-muted-foreground">{delivery.originPostalCode || "-"}</div>
           </td>
           <td className="py-3 px-4">
@@ -20216,12 +21111,18 @@ export default function Deliveries() {
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={openCreate}>
-              <Plus className="w-4 h-4" />
-              Nova Entrega
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="gap-2" onClick={copyPublicUrl} disabled={!publicDeliveryUrl}>
+              <Copy className="w-4 h-4" />
+              Copiar URL pública
             </Button>
-          </DialogTrigger>
+            <DialogTrigger asChild>
+              <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={openCreate}>
+                <Plus className="w-4 h-4" />
+                Nova Entrega
+              </Button>
+            </DialogTrigger>
+          </div>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingId ? "Editar Entrega" : "Criar Nova Entrega"}</DialogTitle>
@@ -20617,6 +21518,7 @@ import {
   createOperationalBase,
   getDeliveries,
   getDeliveryById,
+  getDeliveryByCode,
   getDeliveryEvents,
   getOperationalBases,
   getDriverVehicles,
@@ -20628,6 +21530,7 @@ import {
   deleteUserAccount,
   deleteTenant,
   getTenants,
+  getTenantBySlug,
   updateDelivery,
   updateDeliveryStatus,
   updateDriver,
@@ -20656,6 +21559,113 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+
+  publicPortal: router({
+    tenantBySlug: publicProcedure
+      .input(z.object({ slug: z.string().min(1) }))
+      .query(async ({ input }) => getTenantBySlug(input.slug)),
+
+    trackDeliveryByCode: publicProcedure
+      .input(
+        z.object({
+          slug: z.string().min(1),
+          code: z.string().min(3),
+        })
+      )
+      .query(async ({ input }) => {
+        const tenant = await getTenantBySlug(input.slug);
+        if (!tenant) return null;
+
+        const delivery = await getDeliveryByCode(tenant.id, input.code);
+        if (!delivery) return null;
+
+        return {
+          deliveryCode: delivery.deliveryCode,
+          status: delivery.status,
+          destinationAddress: delivery.destinationAddress,
+          destinationPostalCode: delivery.destinationPostalCode,
+          scheduledAt: delivery.scheduledAt,
+        };
+      }),
+
+    createDeliveryRequest: publicProcedure
+      .input(
+        z.object({
+          tenantSlug: z.string().min(1),
+          clientName: z.string().min(1),
+          clientPhone: z.string().min(8),
+          destinationPostalCode: z.string().optional().nullable(),
+          destinationAddress: z.string().min(1),
+          scheduledAt: z.string().datetime().optional().nullable(),
+          notes: z.string().optional().nullable(),
+          originAddress: z.string().optional().nullable(),
+          originPostalCode: z.string().optional().nullable(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const tenant = await getTenantBySlug(input.tenantSlug);
+        if (!tenant) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Tenant não encontrado",
+          });
+        }
+
+        if (tenant.status !== "active" || tenant.paymentStatus !== "ok") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Este tenant está temporariamente bloqueado",
+          });
+        }
+
+        const delivery = await createDelivery(
+          {
+            tenantId: tenant.id,
+            deliveryCode: undefined,
+            clientName: input.clientName,
+            clientPhone: input.clientPhone,
+            originPostalCode: input.originPostalCode ?? null,
+            originAddress: input.originAddress ?? "",
+            destinationPostalCode: input.destinationPostalCode ?? null,
+            destinationAddress: input.destinationAddress,
+            notes: input.notes ?? null,
+            scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+            status: "pendente",
+          },
+          null
+        );
+
+        const { forwardDeliveryRequestToN8n } = await import("./_core/n8n");
+        const webhookResult = await forwardDeliveryRequestToN8n({
+          tenant: {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+          },
+          delivery: {
+            id: delivery?.id ?? "",
+            code: delivery?.deliveryCode ?? "",
+            clientName: input.clientName,
+            clientPhone: input.clientPhone,
+            destinationAddress: input.destinationAddress,
+            destinationPostalCode: input.destinationPostalCode ?? null,
+            notes: input.notes ?? null,
+            scheduledAt: input.scheduledAt ?? null,
+            status: "pendente",
+          },
+          request: input,
+          submittedAt: new Date().toISOString(),
+          source: "public-portal",
+        });
+
+        return {
+          success: true,
+          delivery,
+          webhookForwarded: webhookResult.forwarded,
+          webhookError: webhookResult.error,
+        };
+      }),
   }),
 
   deliveries: router({
@@ -21257,10 +22267,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { DeliveryFormFields, type DeliveryFormValues } from "@/components/DeliveryFormFields";
 import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import { lookupCep } from "@/lib/cep";
-import { formatCep, formatPhone } from "@/lib/format";
+import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { ArrowDown, ArrowUp, Edit2, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
@@ -21274,19 +22284,7 @@ type RoutePlanItem = any & {
 
 type RoutePlans = Record<string, RoutePlanItem[]>;
 
-type RouteEditForm = {
-  clientName: string;
-  clientPhone: string;
-  baseId: string;
-  originPostalCode: string;
-  originAddress: string;
-  destinationPostalCode: string;
-  destinationAddress: string;
-  driverId: string;
-  notes: string;
-  scheduledAt: string;
-  status: "pendente" | "em_rota" | "entregue" | "cancelado";
-};
+type RouteEditForm = DeliveryFormValues;
 
 const emptyEditForm: RouteEditForm = {
   clientName: "",
@@ -21478,6 +22476,26 @@ export default function Routes() {
     if (!base) return;
     setBasePostalCode(base.postalCode || "");
     setBaseAddress([base.street, base.number, base.neighborhood, base.city, base.state].filter(Boolean).join(", "));
+  };
+
+  const applyEditBase = (base: any | null) => {
+    if (!base) {
+      setEditForm(prev => ({
+        ...prev,
+        baseId: "",
+      }));
+      return;
+    }
+
+    const addressParts = [base.street, base.number, base.neighborhood, base.city, base.state]
+      .filter(Boolean)
+      .join(", ");
+    setEditForm(prev => ({
+      ...prev,
+      baseId: String(base.id),
+      originPostalCode: base.postalCode || prev.originPostalCode,
+      originAddress: addressParts || prev.originAddress,
+    }));
   };
 
   const fillEditCep = async (type: "origin" | "destination") => {
@@ -21949,6 +22967,9 @@ export default function Routes() {
                                   <Badge variant="outline" className={STATUS_BADGE_STYLES[delivery.status] ?? ""}>
                                     {STATUS_LABELS[delivery.status] ?? delivery.status}
                                   </Badge>
+                                  <Badge variant="secondary" className="font-mono text-[11px]">
+                                    {delivery.deliveryCode || "Sem código"}
+                                  </Badge>
                                 </div>
                                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
                                   <MapPin className="h-4 w-4" />
@@ -22003,186 +23024,20 @@ export default function Routes() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2 md:col-span-2">
-              <Label>Cliente *</Label>
-              <Input
-                value={editForm.clientName}
-                onChange={e => setEditForm(prev => ({ ...prev, clientName: e.target.value }))}
-              />
-            </div>
+          <DeliveryFormFields
+            value={editForm}
+            setValue={setEditForm}
+            bases={bases}
+            driverOptions={driverOptions}
+            loadingCep={loadingEditCep}
+            onLookupCep={fillEditCep}
+            onBaseChange={applyEditBase}
+            showStatus
+          />
 
-            <div className="space-y-2">
-              <Label>Telefone do cliente *</Label>
-              <Input
-                value={editForm.clientPhone}
-                onChange={e =>
-                  setEditForm(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Base operacional *</Label>
-              <Select
-                value={editForm.baseId || "unassigned"}
-                onValueChange={value =>
-                  setEditForm(prev => ({
-                    ...prev,
-                    baseId: value === "unassigned" ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a base" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Base principal automática</SelectItem>
-                  {bases.map((base: any) => (
-                    <SelectItem key={base.id} value={String(base.id)}>
-                      {base.name}
-                      {base.isPrimary ? " (principal)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>CEP de origem</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="00000-000"
-                  value={editForm.originPostalCode}
-                  onChange={e =>
-                    setEditForm(prev => ({ ...prev, originPostalCode: formatCep(e.target.value) }))
-                  }
-                  inputMode="numeric"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fillEditCep("origin")}
-                  disabled={loadingEditCep === "origin"}
-                >
-                  Consultar
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>CEP de destino</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="00000-000"
-                  value={editForm.destinationPostalCode}
-                  onChange={e =>
-                    setEditForm(prev => ({
-                      ...prev,
-                      destinationPostalCode: formatCep(e.target.value),
-                    }))
-                  }
-                  inputMode="numeric"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fillEditCep("destination")}
-                  disabled={loadingEditCep === "destination"}
-                >
-                  Consultar
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Endereço de origem *</Label>
-              <Input
-                value={editForm.originAddress}
-                onChange={e => setEditForm(prev => ({ ...prev, originAddress: e.target.value }))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Endereço de destino *</Label>
-              <Input
-                value={editForm.destinationAddress}
-                onChange={e =>
-                  setEditForm(prev => ({ ...prev, destinationAddress: e.target.value }))
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Motorista ativo</Label>
-              <Select
-                value={editForm.driverId || "unassigned"}
-                onValueChange={value =>
-                  setEditForm(prev => ({
-                    ...prev,
-                    driverId: value === "unassigned" ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um motorista ativo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Sem motorista</SelectItem>
-                  {driverOptions.map((driver: any) => (
-                    <SelectItem key={driver.id} value={String(driver.id)}>
-                      {driver.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Data/Hora Agendada</Label>
-              <Input
-                type="datetime-local"
-                value={editForm.scheduledAt}
-                onChange={e => setEditForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Status da entrega</Label>
-              <Select
-                value={editForm.status}
-                onValueChange={value =>
-                  setEditForm(prev => ({
-                    ...prev,
-                    status: value as RouteEditForm["status"],
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["pendente", "em_rota", "entregue", "cancelado"] as const).map(status => (
-                    <SelectItem key={status} value={status}>
-                      {STATUS_LABELS[status]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label>Observações</Label>
-              <Textarea
-                value={editForm.notes}
-                onChange={e => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
-              />
-            </div>
-
-            <Button onClick={saveEditedDelivery} className="md:col-span-2">
-              Salvar alterações
-            </Button>
-          </div>
+          <Button onClick={saveEditedDelivery} className="w-full">
+            Salvar alterações
+          </Button>
         </DialogContent>
       </Dialog>
     </div>
@@ -22192,6 +23047,7 @@ export default function Routes() {
 
 <file path="server/db.ts">
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { randomBytes } from "node:crypto";
 import {
   type Client,
   type ClientBase,
@@ -22231,6 +23087,16 @@ function removeUndefined<T extends Record<string, unknown>>(value: T): Partial<T
   return Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined)
   ) as Partial<T>;
+}
+
+function generateDeliveryCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(6);
+  let code = "";
+  for (const byte of bytes) {
+    code += alphabet[byte % alphabet.length];
+  }
+  return `DEL-${code}`;
 }
 
 async function estimateDeliveryMetrics(originAddress: string, destinationAddress: string) {
@@ -22348,6 +23214,7 @@ function mapVehicleAssignment(row: Record<string, any>): VehicleAssignment {
 function mapDelivery(row: Record<string, any>): Delivery {
   return {
     id: String(row.id),
+    deliveryCode: String(pickField<string>(row, "deliveryCode", "deliverycode") ?? ""),
     clientId: row.clientId ?? null,
     baseId: row.baseId ?? null,
     clientName: String(row.clientName),
@@ -23061,6 +23928,20 @@ export async function getDeliveryById(id: string, accessToken?: string | null) {
   return data ? mapDelivery(data) : undefined;
 }
 
+export async function getDeliveryByCode(tenantId: string, deliveryCode: string, accessToken?: string | null) {
+  const db = clientFor(accessToken);
+  const normalizedCode = deliveryCode.trim().toUpperCase();
+  const { data, error } = await db
+    .from("deliveries")
+    .select("*")
+    .eq("tenantId", tenantId)
+    .eq("deliveryCode", normalizedCode)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapDelivery(data) : undefined;
+}
+
 export async function getDeliveryEvents(
   filters?: {
     deliveryId?: string;
@@ -23126,12 +24007,31 @@ export async function createDelivery(delivery: InsertDelivery, accessToken?: str
     delivery.distance && delivery.estimatedTime
       ? null
       : await estimateDeliveryMetrics(resolvedOriginAddress, delivery.destinationAddress);
+  let finalDeliveryCode = (delivery.deliveryCode ?? generateDeliveryCode()).trim().toUpperCase();
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = attempt === 0 ? finalDeliveryCode : generateDeliveryCode();
+    const { data: existingCode, error: codeError } = await db
+      .from("deliveries")
+      .select("id")
+      .eq("tenantId", delivery.tenantId)
+      .eq("deliveryCode", candidate)
+      .maybeSingle();
+
+    if (codeError) throw codeError;
+    if (!existingCode) {
+      finalDeliveryCode = candidate;
+      break;
+    }
+  }
+
   const { data, error } = await db
     .from("deliveries")
     .insert(
       removeUndefined({
         ...delivery,
         tenantId: delivery.tenantId ?? undefined,
+        deliveryCode: finalDeliveryCode,
         clientId: delivery.clientId ?? null,
         baseId: resolvedBaseId,
         clientPhone: delivery.clientPhone ?? null,
