@@ -451,11 +451,11 @@ export default function Routes() {
       toast.error("Não foi possível atualizar a entrega");
     }
   };
-
+  
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Roteirizacao</h1>
+        <h1 className="text-3xl font-bold text-foreground">Roteirização</h1>
         <p className="mt-1 text-muted-foreground">
           Revisao de rotas automaticas, ordenacao manual, arrastar e soltar e base por CEP.
         </p>
