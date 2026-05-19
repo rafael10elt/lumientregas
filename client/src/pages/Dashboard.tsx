@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { generateDashboardReportPdf } from "@/lib/dashboardPdf";
 import {
@@ -45,6 +46,7 @@ const presetButtons: Array<{ key: DashboardFilters["preset"]; label: string }> =
 export default function Dashboard() {
   const [filters, setFilters] = useState<DashboardFilters>(() => normalizeDashboardFilters());
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const { tenant } = useAuth();
   const { data: drivers = [] } = trpc.drivers.list.useQuery();
 
   const queryInput = useMemo(() => {
@@ -93,6 +95,7 @@ export default function Dashboard() {
         deliveries,
         drivers,
         filters,
+        tenantName: tenant?.name ?? null,
       });
     } finally {
       setIsGeneratingPdf(false);

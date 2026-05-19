@@ -1,6 +1,6 @@
+import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { format } from "date-fns";
 import {
   buildDailyTrend,
   buildDriverPerformance,
@@ -16,6 +16,7 @@ type GenerateDashboardPdfParams = {
   deliveries: DashboardDelivery[];
   drivers: DashboardDriver[];
   filters: DashboardFilters;
+  tenantName?: string | null;
 };
 
 function hexToRgb(hex: string) {
@@ -29,53 +30,49 @@ function hexToRgb(hex: string) {
   };
 }
 
-function applyHexFill(doc: jsPDF, hex: string) {
+function fill(doc: jsPDF, hex: string) {
   const { r, g, b } = hexToRgb(hex);
   doc.setFillColor(r, g, b);
 }
 
-function applyHexStroke(doc: jsPDF, hex: string) {
+function stroke(doc: jsPDF, hex: string) {
   const { r, g, b } = hexToRgb(hex);
   doc.setDrawColor(r, g, b);
 }
 
-function drawLogo(doc: jsPDF, x: number, y: number) {
-  applyHexFill(doc, "#1d4ed8");
-  doc.circle(x + 8, y + 8, 8, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text("LE", x + 5.3, y + 11);
-  doc.setTextColor(15, 23, 42);
-}
-
-function drawHeader(doc: jsPDF, filters: DashboardFilters) {
+function drawHeader(doc: jsPDF, filters: DashboardFilters, tenantName?: string | null) {
   const pageWidth = doc.internal.pageSize.getWidth();
-  applyHexFill(doc, "#0f172a");
-  doc.roundedRect(10, 10, pageWidth - 20, 24, 4, 4, "F");
 
-  drawLogo(doc, 14, 14);
+  fill(doc, "#f8fbff");
+  stroke(doc, "#cbd5e1");
+  doc.roundedRect(10, 10, pageWidth - 20, 24, 4, 4, "FD");
 
-  doc.setTextColor(255, 255, 255);
+  fill(doc, "#2563eb");
+  doc.rect(10, 10, 1.5, 24, "F");
+
+  doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
-  doc.text("Lumi Entregas", 30, 19);
-  doc.setFontSize(11);
+  doc.text((tenantName?.trim() || "Lumi Entregas"), 16, 19);
+
   doc.setFont("helvetica", "normal");
-  doc.text("Relatório executivo de desempenho", 30, 25);
+  doc.setFontSize(11);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Relatório executivo de desempenho", 16, 25);
 
   doc.setFontSize(9);
-  doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm")}`, pageWidth - 80, 18, { align: "left" });
-  doc.text(buildPeriodLabel(filters), pageWidth - 80, 24, { align: "left" });
+  doc.setTextColor(51, 65, 85);
+  doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm")}`, pageWidth - 16, 18, { align: "right" });
+  doc.text(buildPeriodLabel(filters), pageWidth - 16, 24, { align: "right" });
   doc.setTextColor(15, 23, 42);
 }
 
 function drawMetricCard(doc: jsPDF, x: number, y: number, w: number, h: number, label: string, value: string, accent: string) {
-  applyHexFill(doc, "#ffffff");
-  applyHexStroke(doc, "#dbe3f0");
+  fill(doc, "#ffffff");
+  stroke(doc, "#dbe3f0");
   doc.roundedRect(x, y, w, h, 3, 3, "FD");
 
-  applyHexFill(doc, accent);
+  fill(doc, accent);
   doc.roundedRect(x, y, 2.6, h, 2, 2, "F");
 
   doc.setTextColor(71, 85, 105);
@@ -89,6 +86,13 @@ function drawMetricCard(doc: jsPDF, x: number, y: number, w: number, h: number, 
   doc.text(value, x + 6, y + 16);
 }
 
+function drawChartCardTitle(doc: jsPDF, x: number, y: number, title: string) {
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text(title, x + 5, y + 7);
+}
+
 function drawHorizontalBars(
   doc: jsPDF,
   x: number,
@@ -98,14 +102,10 @@ function drawHorizontalBars(
   title: string,
   series: Array<{ label: string; value: number; color: string }>
 ) {
-  applyHexFill(doc, "#ffffff");
-  applyHexStroke(doc, "#dbe3f0");
+  fill(doc, "#ffffff");
+  stroke(doc, "#dbe3f0");
   doc.roundedRect(x, y, w, h, 3, 3, "FD");
-
-  doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text(title, x + 5, y + 7);
+  drawChartCardTitle(doc, x, y, title);
 
   if (series.length === 0) {
     doc.setFont("helvetica", "normal");
@@ -127,12 +127,12 @@ function drawHorizontalBars(
     doc.setTextColor(51, 65, 85);
     doc.text(item.label, x + 5, rowY + 4);
 
-    applyHexFill(doc, "#e2e8f0");
+    fill(doc, "#e2e8f0");
     doc.roundedRect(x + 24, rowY + 1, barAreaWidth, 3.2, 1.2, 1.2, "F");
 
     const filled = (item.value / maxValue) * barAreaWidth;
     if (filled > 0) {
-      applyHexFill(doc, item.color);
+      fill(doc, item.color);
       doc.roundedRect(x + 24, rowY + 1, filled, 3.2, 1.2, 1.2, "F");
     }
 
@@ -150,14 +150,10 @@ function drawTrendChart(
   title: string,
   points: Array<{ label: string; total: number; completed: number }>
 ) {
-  applyHexFill(doc, "#ffffff");
-  applyHexStroke(doc, "#dbe3f0");
+  fill(doc, "#ffffff");
+  stroke(doc, "#dbe3f0");
   doc.roundedRect(x, y, w, h, 3, 3, "FD");
-
-  doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text(title, x + 5, y + 7);
+  drawChartCardTitle(doc, x, y, title);
 
   if (points.length === 0) {
     doc.setFont("helvetica", "normal");
@@ -173,13 +169,12 @@ function drawTrendChart(
   const chartH = h - 18;
   const maxValue = Math.max(1, ...points.flatMap(point => [point.total, point.completed]));
 
-  applyHexStroke(doc, "#cbd5e1");
+  stroke(doc, "#cbd5e1");
   doc.line(chartX, chartY + chartH, chartX + chartW, chartY + chartH);
   doc.line(chartX, chartY, chartX, chartY + chartH);
 
   const scaleX = points.length > 1 ? chartW / (points.length - 1) : chartW;
   const scaleY = chartH / maxValue;
-
   const totalLine: Array<[number, number]> = [];
   const completedLine: Array<[number, number]> = [];
 
@@ -196,7 +191,7 @@ function drawTrendChart(
   });
 
   const drawPolyline = (linePoints: Array<[number, number]>, color: string) => {
-    applyHexStroke(doc, color);
+    stroke(doc, color);
     doc.setLineWidth(0.6);
     for (let index = 0; index < linePoints.length - 1; index += 1) {
       const [x1, y1] = linePoints[index];
@@ -204,7 +199,7 @@ function drawTrendChart(
       doc.line(x1, y1, x2, y2);
     }
     linePoints.forEach(([lx, ly]) => {
-      applyHexFill(doc, color);
+      fill(doc, color);
       doc.circle(lx, ly, 0.8, "F");
     });
   };
@@ -215,10 +210,10 @@ function drawTrendChart(
   doc.setFontSize(7);
   doc.setTextColor(51, 65, 85);
   doc.text("Total", x + 6, y + h - 4);
-  applyHexFill(doc, "#2563eb");
+  fill(doc, "#2563eb");
   doc.rect(x + 20, y + h - 6.6, 4, 2, "F");
   doc.text("Entregues", x + 28, y + h - 4);
-  applyHexFill(doc, "#16a34a");
+  fill(doc, "#16a34a");
   doc.rect(x + 48, y + h - 6.6, 4, 2, "F");
 }
 
@@ -232,8 +227,8 @@ function drawSummaryChips(doc: jsPDF, x: number, y: number, filters: DashboardFi
   let cursorX = x;
   chips.forEach(chip => {
     const chipWidth = Math.min(86, 16 + chip.length * 1.8);
-    applyHexFill(doc, "#eef4ff");
-    applyHexStroke(doc, "#bfdbfe");
+    fill(doc, "#eef4ff");
+    stroke(doc, "#bfdbfe");
     doc.roundedRect(cursorX, y, chipWidth, 8, 2, 2, "FD");
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
@@ -247,6 +242,7 @@ export async function generateDashboardReportPdf({
   deliveries,
   drivers,
   filters,
+  tenantName,
 }: GenerateDashboardPdfParams) {
   const doc = new jsPDF({
     orientation: "landscape",
@@ -271,7 +267,7 @@ export async function generateDashboardReportPdf({
   const activeDrivers = driverPerformance.filter(item => item.total > 0).length;
   const topDriver = driverPerformance[0] ?? null;
 
-  drawHeader(doc, filters);
+  drawHeader(doc, filters, tenantName);
   drawSummaryChips(doc, 12, 37, filters);
 
   const metricsTop = 48;
@@ -282,8 +278,8 @@ export async function generateDashboardReportPdf({
   drawMetricCard(doc, 104, metricsTop + 23, 89, 20, "Canceladas", String(canceledDeliveries), "#ef4444");
   drawMetricCard(doc, 196, metricsTop + 23, 89, 20, "Taxa de conclusão", completionRate, "#0f172a");
 
-  applyHexFill(doc, "#ffffff");
-  applyHexStroke(doc, "#dbe3f0");
+  fill(doc, "#ffffff");
+  stroke(doc, "#dbe3f0");
   doc.roundedRect(12, 96, 273, 18, 3, 3, "FD");
   doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
@@ -355,28 +351,31 @@ export async function generateDashboardReportPdf({
     startY: 24,
     margin: { left: 12, right: 12 },
     theme: "grid",
+    tableWidth: "wrap",
     headStyles: {
-      fillColor: [15, 23, 42],
-      textColor: [255, 255, 255],
+      fillColor: [226, 232, 240],
+      textColor: [15, 23, 42],
       fontStyle: "bold",
       fontSize: 8,
+      halign: "center",
     },
     bodyStyles: {
-      fontSize: 7,
-      cellPadding: 2,
+      fontSize: 6.8,
+      cellPadding: 1.8,
     },
     styles: {
       overflow: "linebreak",
-      halign: "left",
       valign: "middle",
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
     },
     columnStyles: {
-      0: { cellWidth: 48 },
-      1: { cellWidth: 70 },
-      2: { cellWidth: 24 },
-      3: { cellWidth: 34 },
-      4: { cellWidth: 34 },
-      5: { cellWidth: 30 },
+      0: { cellWidth: 56, halign: "left" },
+      1: { cellWidth: 26, halign: "center" },
+      2: { cellWidth: 26, halign: "center" },
+      3: { cellWidth: 26, halign: "center" },
+      4: { cellWidth: 26, halign: "center" },
+      5: { cellWidth: 24, halign: "center" },
     },
     head: [["Motorista", "Total", "Entregues", "Pendentes", "Em rota", "Taxa"]],
     body: driverPerformance.slice(0, 8).map(driver => [
@@ -387,7 +386,7 @@ export async function generateDashboardReportPdf({
       String(driver.inRoute),
       driver.total > 0 ? `${((driver.completed / driver.total) * 100).toFixed(1)}%` : "0.0%",
     ]),
-    didDrawPage: data => {
+    didDrawPage: () => {
       doc.setFontSize(7);
       doc.setTextColor(100, 116, 139);
       doc.text(`Página ${doc.getNumberOfPages()}`, doc.internal.pageSize.getWidth() - 18, doc.internal.pageSize.getHeight() - 6, {
@@ -402,29 +401,32 @@ export async function generateDashboardReportPdf({
     startY: lastTableY + 8,
     margin: { left: 12, right: 12 },
     theme: "grid",
+    tableWidth: "wrap",
     headStyles: {
-      fillColor: [37, 99, 235],
-      textColor: [255, 255, 255],
+      fillColor: [226, 232, 240],
+      textColor: [15, 23, 42],
       fontStyle: "bold",
       fontSize: 8,
+      halign: "center",
     },
     bodyStyles: {
-      fontSize: 7,
-      cellPadding: 2,
+      fontSize: 6.8,
+      cellPadding: 1.8,
     },
     styles: {
       overflow: "linebreak",
-      halign: "left",
       valign: "middle",
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
     },
     columnStyles: {
-      0: { cellWidth: 28 },
-      1: { cellWidth: 68 },
-      2: { cellWidth: 26 },
-      3: { cellWidth: 46 },
-      4: { cellWidth: 64 },
+      0: { cellWidth: 28, halign: "center" },
+      1: { cellWidth: 68, halign: "left" },
+      2: { cellWidth: 24, halign: "center" },
+      3: { cellWidth: 38, halign: "left" },
+      4: { cellWidth: 62, halign: "left" },
     },
-    head: [["Código", "Cliente", "Status", "Motorista", "Destino"]],
+    head: [["Cód.", "Cliente", "Status", "Motorista", "Destino"]],
     body: deliveries.slice(0, 12).map(delivery => [
       delivery.deliveryCode || "-",
       delivery.clientName || "-",
@@ -432,7 +434,7 @@ export async function generateDashboardReportPdf({
       drivers.find(driver => String(driver.id) === String((delivery as any).driverId))?.name || "-",
       delivery.destinationAddress || "-",
     ]),
-    didDrawPage: data => {
+    didDrawPage: () => {
       doc.setFontSize(7);
       doc.setTextColor(100, 116, 139);
       doc.text(`Página ${doc.getNumberOfPages()}`, doc.internal.pageSize.getWidth() - 18, doc.internal.pageSize.getHeight() - 6, {
@@ -441,6 +443,5 @@ export async function generateDashboardReportPdf({
     },
   });
 
-  const filename = buildReportFilename(filters);
-  doc.save(filename);
+  doc.save(buildReportFilename(filters));
 }

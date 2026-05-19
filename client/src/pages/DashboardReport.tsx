@@ -1,4 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { generateDashboardReportPdf } from "@/lib/dashboardPdf";
 import { trpc } from "@/lib/trpc";
 import { normalizeDashboardFilters, parseDateInputValue, type DashboardFilters } from "@/lib/dashboardAnalytics";
@@ -20,6 +21,7 @@ export default function DashboardReport() {
   const filters = useMemo(() => readFiltersFromLocation(), []);
   const [generated, setGenerated] = useState(false);
   const generationAttemptedRef = useRef(false);
+  const { tenant } = useAuth();
 
   const { data: deliveries = [], isLoading: deliveriesLoading } = trpc.deliveries.list.useQuery(
     {
@@ -44,8 +46,9 @@ export default function DashboardReport() {
       deliveries,
       drivers,
       filters,
+      tenantName: tenant?.name ?? null,
     }).then(() => setGenerated(true));
-  }, [deliveries, drivers, deliveriesLoading, driversLoading, filters]);
+  }, [deliveries, drivers, deliveriesLoading, driversLoading, filters, tenant?.name]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
