@@ -6,10 +6,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { DeliveryFormFields, type DeliveryFormValues } from "@/components/DeliveryFormFields";
 import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import { lookupCep } from "@/lib/cep";
-import { formatCep, formatPhone } from "@/lib/format";
+import { formatCep } from "@/lib/format";
 import { openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { ArrowDown, ArrowUp, Edit2, GripVertical, MapPin, Navigation, RefreshCw, Save, Search } from "lucide-react";
@@ -23,19 +23,7 @@ type RoutePlanItem = any & {
 
 type RoutePlans = Record<string, RoutePlanItem[]>;
 
-type RouteEditForm = {
-  clientName: string;
-  clientPhone: string;
-  baseId: string;
-  originPostalCode: string;
-  originAddress: string;
-  destinationPostalCode: string;
-  destinationAddress: string;
-  driverId: string;
-  notes: string;
-  scheduledAt: string;
-  status: "pendente" | "em_rota" | "entregue" | "cancelado";
-};
+type RouteEditForm = DeliveryFormValues;
 
 const emptyEditForm: RouteEditForm = {
   clientName: "",
@@ -227,6 +215,26 @@ export default function Routes() {
     if (!base) return;
     setBasePostalCode(base.postalCode || "");
     setBaseAddress([base.street, base.number, base.neighborhood, base.city, base.state].filter(Boolean).join(", "));
+  };
+
+  const applyEditBase = (base: any | null) => {
+    if (!base) {
+      setEditForm(prev => ({
+        ...prev,
+        baseId: "",
+      }));
+      return;
+    }
+
+    const addressParts = [base.street, base.number, base.neighborhood, base.city, base.state]
+      .filter(Boolean)
+      .join(", ");
+    setEditForm(prev => ({
+      ...prev,
+      baseId: String(base.id),
+      originPostalCode: base.postalCode || prev.originPostalCode,
+      originAddress: addressParts || prev.originAddress,
+    }));
   };
 
   const fillEditCep = async (type: "origin" | "destination") => {
@@ -752,186 +760,20 @@ export default function Routes() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2 md:col-span-2">
-              <Label>Cliente *</Label>
-              <Input
-                value={editForm.clientName}
-                onChange={e => setEditForm(prev => ({ ...prev, clientName: e.target.value }))}
-              />
-            </div>
+          <DeliveryFormFields
+            value={editForm}
+            setValue={setEditForm}
+            bases={bases}
+            driverOptions={driverOptions}
+            loadingCep={loadingEditCep}
+            onLookupCep={fillEditCep}
+            onBaseChange={applyEditBase}
+            showStatus
+          />
 
-            <div className="space-y-2">
-              <Label>Telefone do cliente *</Label>
-              <Input
-                value={editForm.clientPhone}
-                onChange={e =>
-                  setEditForm(prev => ({ ...prev, clientPhone: formatPhone(e.target.value) }))
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Base operacional *</Label>
-              <Select
-                value={editForm.baseId || "unassigned"}
-                onValueChange={value =>
-                  setEditForm(prev => ({
-                    ...prev,
-                    baseId: value === "unassigned" ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a base" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Base principal automática</SelectItem>
-                  {bases.map((base: any) => (
-                    <SelectItem key={base.id} value={String(base.id)}>
-                      {base.name}
-                      {base.isPrimary ? " (principal)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>CEP de origem</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="00000-000"
-                  value={editForm.originPostalCode}
-                  onChange={e =>
-                    setEditForm(prev => ({ ...prev, originPostalCode: formatCep(e.target.value) }))
-                  }
-                  inputMode="numeric"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fillEditCep("origin")}
-                  disabled={loadingEditCep === "origin"}
-                >
-                  Consultar
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>CEP de destino</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="00000-000"
-                  value={editForm.destinationPostalCode}
-                  onChange={e =>
-                    setEditForm(prev => ({
-                      ...prev,
-                      destinationPostalCode: formatCep(e.target.value),
-                    }))
-                  }
-                  inputMode="numeric"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fillEditCep("destination")}
-                  disabled={loadingEditCep === "destination"}
-                >
-                  Consultar
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Endereço de origem *</Label>
-              <Input
-                value={editForm.originAddress}
-                onChange={e => setEditForm(prev => ({ ...prev, originAddress: e.target.value }))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Endereço de destino *</Label>
-              <Input
-                value={editForm.destinationAddress}
-                onChange={e =>
-                  setEditForm(prev => ({ ...prev, destinationAddress: e.target.value }))
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Motorista ativo</Label>
-              <Select
-                value={editForm.driverId || "unassigned"}
-                onValueChange={value =>
-                  setEditForm(prev => ({
-                    ...prev,
-                    driverId: value === "unassigned" ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um motorista ativo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Sem motorista</SelectItem>
-                  {driverOptions.map((driver: any) => (
-                    <SelectItem key={driver.id} value={String(driver.id)}>
-                      {driver.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Data/Hora Agendada</Label>
-              <Input
-                type="datetime-local"
-                value={editForm.scheduledAt}
-                onChange={e => setEditForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Status da entrega</Label>
-              <Select
-                value={editForm.status}
-                onValueChange={value =>
-                  setEditForm(prev => ({
-                    ...prev,
-                    status: value as RouteEditForm["status"],
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["pendente", "em_rota", "entregue", "cancelado"] as const).map(status => (
-                    <SelectItem key={status} value={status}>
-                      {STATUS_LABELS[status]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label>Observações</Label>
-              <Textarea
-                value={editForm.notes}
-                onChange={e => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
-              />
-            </div>
-
-            <Button onClick={saveEditedDelivery} className="md:col-span-2">
-              Salvar alterações
-            </Button>
-          </div>
+          <Button onClick={saveEditedDelivery} className="w-full">
+            Salvar alterações
+          </Button>
         </DialogContent>
       </Dialog>
     </div>

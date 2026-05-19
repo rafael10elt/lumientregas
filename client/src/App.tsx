@@ -17,9 +17,10 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import DriverPortal from "./pages/DriverPortal";
 import Tenants from "./pages/Tenants";
+import PublicDeliveryRequest from "./pages/PublicDeliveryRequest";
 import NotFound from "@/pages/NotFound";
 import { Loader2, ShieldAlert } from "lucide-react";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useRoute } from "wouter";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { ConfirmProvider } from "./components/ConfirmProvider";
@@ -63,8 +64,10 @@ function TenantBlockedScreen({
 function Router() {
   const { isAuthenticated, loading, user, accessBlocked, accessBlockedReason, tenant, logout } = useAuth();
   const [location, setLocation] = useLocation();
+  const [publicRequestMatch, publicRequestParams] = useRoute("/solicitar/:tenantSlug");
 
   useEffect(() => {
+    if (publicRequestMatch) return;
     if (!user) return;
     const tenantPages = ["/", "/deliveries", "/bases", "/vehicles", "/routes", "/analytics"];
     const saasPages = ["/tenants", "/users"];
@@ -96,7 +99,11 @@ function Router() {
     if (location === "/tenants") {
       setLocation("/");
     }
-  }, [location, setLocation, user]);
+  }, [location, publicRequestMatch, setLocation, user]);
+
+  if (publicRequestMatch) {
+    return <PublicDeliveryRequest tenantSlug={publicRequestParams?.tenantSlug ?? ""} />;
+  }
 
   if (location === "/login") {
     if (loading) {

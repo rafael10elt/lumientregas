@@ -25,6 +25,7 @@ import {
   deleteUserAccount,
   deleteTenant,
   getTenants,
+  getTenantBySlug,
   updateDelivery,
   updateDeliveryStatus,
   updateDriver,
@@ -53,6 +54,88 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+
+  publicPortal: router({
+    tenantBySlug: publicProcedure
+      .input(z.object({ slug: z.string().min(1) }))
+      .query(async ({ input }) => getTenantBySlug(input.slug)),
+
+    createDeliveryRequest: publicProcedure
+      .input(
+        z.object({
+          tenantSlug: z.string().min(1),
+          clientName: z.string().min(1),
+          clientPhone: z.string().min(8),
+          destinationPostalCode: z.string().optional().nullable(),
+          destinationAddress: z.string().min(1),
+          scheduledAt: z.string().datetime().optional().nullable(),
+          notes: z.string().optional().nullable(),
+          originAddress: z.string().optional().nullable(),
+          originPostalCode: z.string().optional().nullable(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const tenant = await getTenantBySlug(input.tenantSlug);
+        if (!tenant) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Tenant não encontrado",
+          });
+        }
+
+        if (tenant.status !== "active" || tenant.paymentStatus !== "ok") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Este tenant está temporariamente bloqueado",
+          });
+        }
+
+        const delivery = await createDelivery(
+          {
+            tenantId: tenant.id,
+            clientName: input.clientName,
+            clientPhone: input.clientPhone,
+            originPostalCode: input.originPostalCode ?? null,
+            originAddress: input.originAddress ?? "",
+            destinationPostalCode: input.destinationPostalCode ?? null,
+            destinationAddress: input.destinationAddress,
+            notes: input.notes ?? null,
+            scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+            status: "pendente",
+          },
+          null
+        );
+
+        const { forwardDeliveryRequestToN8n } = await import("./_core/n8n");
+        const webhookResult = await forwardDeliveryRequestToN8n({
+          tenant: {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+          },
+          delivery: {
+            id: delivery?.id ?? "",
+            clientName: input.clientName,
+            clientPhone: input.clientPhone,
+            destinationAddress: input.destinationAddress,
+            destinationPostalCode: input.destinationPostalCode ?? null,
+            notes: input.notes ?? null,
+            scheduledAt: input.scheduledAt ?? null,
+            status: "pendente",
+          },
+          request: input,
+          submittedAt: new Date().toISOString(),
+          source: "public-portal",
+        });
+
+        return {
+          success: true,
+          delivery,
+          webhookForwarded: webhookResult.forwarded,
+          webhookError: webhookResult.error,
+        };
+      }),
   }),
 
   deliveries: router({

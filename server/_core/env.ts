@@ -9,6 +9,8 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  n8nDeliveryWebhookUrl: process.env.N8N_DELIVERY_WEBHOOK_URL ?? "",
+  n8nDeliveryWebhookToken: process.env.N8N_DELIVERY_WEBHOOK_TOKEN ?? "",
   supabaseProjectId,
   supabaseUrl: process.env.SUPABASE_URL ?? (supabaseProjectId ? `https://${supabaseProjectId}.supabase.co` : ""),
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
