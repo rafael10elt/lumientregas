@@ -1,3 +1,4 @@
+// server/_core/n8n.ts
 import { ENV } from "./env";
 
 type N8nDeliveryRequestPayload = {
@@ -5,9 +6,9 @@ type N8nDeliveryRequestPayload = {
     id: string;
     name: string;
     slug: string;
-    contactName: string | null;
-    contactEmail: string | null;
-    contactPhone: string | null;
+    contactName: string | null;  // Adicionado
+    contactEmail: string | null; // Adicionado
+    contactPhone: string | null; // Adicionado
   };
   delivery: {
     id: string;
@@ -25,10 +26,47 @@ type N8nDeliveryRequestPayload = {
   source: "public-portal";
 };
 
-export async function forwardDeliveryRequestToN8n(payload: N8nDeliveryRequestPayload) {
+export async function forwardDeliveryRequestToN8n(
+  // Adicionado o parâmetro 'tenant' para garantir que os dados estejam disponíveis
+  tenant: { 
+    id: string; 
+    name: string; 
+    slug: string; 
+    contactName: string | null; 
+    contactEmail: string | null; 
+    contactPhone: string | null; 
+  },
+  delivery: any,
+  request: Record<string, unknown>
+) {
   if (!ENV.n8nDeliveryWebhookUrl) {
     return { forwarded: false as const, error: null };
   }
+
+  const payload: N8nDeliveryRequestPayload = {
+    tenant: {
+      id: tenant.id,
+      name: tenant.name,
+      slug: tenant.slug,
+      contactName: tenant.contactName,
+      contactEmail: tenant.contactEmail,
+      contactPhone: tenant.contactPhone,
+    },
+    delivery: {
+      id: delivery.id,
+      code: delivery.deliveryCode,
+      clientName: delivery.clientName,
+      clientPhone: delivery.clientPhone,
+      destinationAddress: delivery.destinationAddress,
+      destinationPostalCode: delivery.destinationPostalCode,
+      notes: delivery.notes,
+      scheduledAt: delivery.scheduledAt ? new Date(delivery.scheduledAt).toISOString() : null,
+      status: delivery.status,
+    },
+    request,
+    submittedAt: new Date().toISOString(),
+    source: "public-portal",
+  };
 
   try {
     const headers: Record<string, string> = {

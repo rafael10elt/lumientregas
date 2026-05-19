@@ -5,6 +5,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { registerStorageProxy } from "./storageProxy";
 import { createDelivery, getTenantById, getTenantBySlug } from "../db";
+import { forwardDeliveryRequestToN8n } from "./n8n"; // Importação garantida
 
 export function createApp(): Express {
   const app = express();
@@ -79,7 +80,26 @@ export function createApp(): Express {
         null
       );
 
-      return res.status(201).json({ success: true, delivery });
+      // Chamada atualizada passando o objeto tenant (incluindo campos de contato), delivery e body
+      const webhookResult = await forwardDeliveryRequestToN8n(
+        {
+          id: tenant.id,
+          name: tenant.name,
+          slug: tenant.slug,
+          contactName: tenant.contactName,
+          contactEmail: tenant.contactEmail,
+          contactPhone: tenant.contactPhone,
+        },
+        delivery,
+        body
+      );
+
+      return res.status(201).json({ 
+        success: true, 
+        delivery,
+        webhookForwarded: webhookResult.forwarded,
+        webhookError: webhookResult.error
+      });
     } catch (error: any) {
       return res.status(500).json({
         success: false,
