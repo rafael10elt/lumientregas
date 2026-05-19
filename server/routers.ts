@@ -138,6 +138,9 @@ export const appRouter = router({
             id: tenant.id,
             name: tenant.name,
             slug: tenant.slug,
+            contactName: tenant.contactName,
+            contactEmail: tenant.contactEmail,
+            contactPhone: tenant.contactPhone,
           },
           delivery: {
             id: delivery?.id ?? "",
@@ -212,7 +215,7 @@ export const appRouter = router({
           });
         }
 
-        await createDelivery(
+        const delivery = await createDelivery(
           {
             ...input,
             createdByUserId: ctx.user?.id ?? null,
@@ -220,7 +223,7 @@ export const appRouter = router({
           },
           ctx.accessToken
         );
-        return { success: true };
+        return { success: true, delivery };
       }),
 
     update: tenantProtectedProcedure

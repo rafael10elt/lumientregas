@@ -8,6 +8,7 @@ import { lookupCep } from "@/lib/cep";
 import { formatPhone, formatCep } from "@/lib/format";
 import { openWhatsApp } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
+import { notifyDeliveryCreated } from "@/lib/deliveryNotifications";
 import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle2,
@@ -156,7 +157,13 @@ export default function PublicDeliveryRequest({ tenantSlug }: PublicDeliveryRequ
 
       setFormData(emptyForm);
       setSubmissionResult({ deliveryCode: response.delivery?.deliveryCode ?? "" });
-      toast.success("Solicitação enviada com sucesso");
+      if (response.delivery) {
+        notifyDeliveryCreated({
+          id: String(response.delivery.id),
+          deliveryCode: response.delivery.deliveryCode ?? null,
+          clientName: response.delivery.clientName ?? null,
+        });
+      }
       if (!response.webhookForwarded && response.webhookError) {
         toast.warning("A solicitação foi registrada, mas houve falha ao disparar o fluxo automático");
       }

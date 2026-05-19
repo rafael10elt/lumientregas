@@ -13,6 +13,7 @@ import { formatCep, formatPhone } from "@/lib/format";
 import { openWhatsApp, openGpsRoute } from "@/lib/navigation";
 import { trpc } from "@/lib/trpc";
 import { lookupCep } from "@/lib/cep";
+import { notifyDeliveryCreated } from "@/lib/deliveryNotifications";
 import {
   Calendar,
   ChevronDown,
@@ -355,8 +356,14 @@ export default function Deliveries() {
         });
         toast.success("Entrega atualizada com sucesso");
       } else {
-        await createMutation.mutateAsync(payload);
-        toast.success("Entrega criada com sucesso");
+        const response = await createMutation.mutateAsync(payload);
+        if (response?.delivery) {
+          notifyDeliveryCreated({
+            id: String(response.delivery.id),
+            deliveryCode: response.delivery.deliveryCode ?? null,
+            clientName: response.delivery.clientName ?? null,
+          });
+        }
       }
 
       setOpen(false);

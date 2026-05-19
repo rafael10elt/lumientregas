@@ -26,6 +26,7 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 import { BrandMark } from "./BrandMark";
+import DeliveryNotificationWatcher from "./DeliveryNotificationWatcher";
 
 const operationalMenuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -171,6 +172,7 @@ function DashboardLayoutContent({
 
   return (
     <>
+      <DeliveryNotificationWatcher />
       <div className="relative" ref={sidebarRef}>
         <Sidebar collapsible="icon" className="border-r-0" disableTransition={isResizing}>
           <SidebarHeader className="h-16 justify-center">
